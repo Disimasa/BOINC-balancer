@@ -168,9 +168,9 @@ def main():
         ("Очистка", step_cleanup),
         ("Сборка и запуск", step_build),
         ("Создание приложений", step_create_apps),
+        ("Создание задач", step_create_tasks),
         ("Создание пользователя", step_create_user),
         ("Подключение клиентов", step_connect_clients),
-        ("Создание задач", step_create_tasks),
     ]
     
     for step_name, step_func in steps:

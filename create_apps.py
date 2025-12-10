@@ -154,32 +154,9 @@ def create_apps():
         create_app(app['name'], app['resultsdir'])
 
     print("\n" + "=" * 60)
-    print("Обновляю версии Apps...")
+    print("Примечание: версии будут обновлены позже через create_tasks_bin.py")
+    print("(после добавления бинарников и version.xml)")
     print("=" * 60)
-    # Используем yes для автоматического ответа на вопросы update_versions
-    # Запускаем несколько раз, чтобы убедиться, что все версии обработаны
-    for attempt in range(1, 4):
-        print(f"\nПопытка {attempt} обновления версий...")
-        cmd = "cd {} && yes | bin/update_versions 2>&1".format(PROJECT_HOME)
-        run_command(cmd, check=False)
-        time.sleep(2)  # Небольшая пауза между попытками
-    
-    print("\n" + "=" * 60)
-    print("Проверяю созданные версии в базе данных...")
-    print("=" * 60)
-    # Проверяем, что версии действительно добавлены в БД
-    for app in apps:
-        print(f"\nПроверка версий для {app['name']}:")
-        cmd = (
-            "cd {projhome} && "
-            "for platform_dir in apps/{appname}/1.0/*; do "
-            "platform=$(basename $platform_dir); "
-            "if [ -d \"$platform_dir\" ] && [ -f \"$platform_dir/version.xml\" ]; then "
-            "echo \"  Найдена директория: $platform\"; "
-            "fi; "
-            "done"
-        ).format(projhome=PROJECT_HOME, appname=app['name'])
-        run_command(cmd, check=False)
 
     print("\n" + "=" * 60)
     print("Перезапускаю демоны BOINC для применения изменений...")
@@ -205,10 +182,11 @@ def create_apps():
     print("Все Apps успешно созданы!")
     print("=" * 60)
     print("\n✓ Приложения созданы")
-    print("✓ Версии созданы и добавлены в базу данных")
+    print("✓ Структура директорий создана")
     print("✓ Шаблоны результатов созданы")
     print("✓ Демоны BOINC перезапущены")
-    print("\nВерсии должны быть видны в веб-интерфейсе.")
+    print("\nПримечание: версии будут добавлены в базу данных")
+    print("после запуска create_tasks_bin.py (который добавит бинарники и version.xml).")
 
 
 if __name__ == "__main__":

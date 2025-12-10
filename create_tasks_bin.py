@@ -173,14 +173,44 @@ def install_app_binary(app_name, binary_path, version_num):
             print("Отсутствует файл ({desc}): {path}".format(desc=desc, path=p), file=sys.stderr)
         return False, None, None, None
 
+    # Копируем бинарник
     cmd = (
         "mkdir -p {dest} && "
         "cp {bin} {dest}/{binary_name} && "
-        "chmod +x {dest}/{binary_name} && "
-        ": > {dest}/{binary_name}.sig"
+        "chmod +x {dest}/{binary_name}"
     ).format(dest=platform_dir, bin=binary_path, binary_name=binary_name)
     if not run_command(cmd, check=True):
         return False, None, None
+    
+    # Подписываем бинарник
+    binary_full_path = os.path.join(platform_dir, binary_name)
+    sig_path = os.path.join(platform_dir, "{}.sig".format(binary_name))
+    
+    # Пробуем несколько возможных путей к ключу
+    # 1. keys/code_sign_private_new (новый созданный ключ)
+    # 2. keys/code_sign_private (в проекте, но может быть /dev/null)
+    # 3. /run/secrets/keys/code_sign_private (но он может быть /dev/null)
+    cmd_sign = (
+        "bin_path='{bin_path}' && "
+        "sig_path='{sig_path}' && "
+        "key1='keys/code_sign_private_new' && "
+        "key2='keys/code_sign_private' && "
+        "key3='/run/secrets/keys/code_sign_private' && "
+        "if [ -f \"$key1\" ] && [ ! -c \"$key1\" ]; then "
+        "  bin/sign_executable \"$bin_path\" \"$key1\" > \"$sig_path\" 2>&1 && echo 'Signed with keys/code_sign_private_new'; "
+        "elif [ -f \"$key2\" ] && [ ! -c \"$key2\" ]; then "
+        "  bin/sign_executable \"$bin_path\" \"$key2\" > \"$sig_path\" 2>&1 && echo 'Signed with keys/code_sign_private'; "
+        "elif [ -f \"$key3\" ] && [ ! -c \"$key3\" ]; then "
+        "  bin/sign_executable \"$bin_path\" \"$key3\" > \"$sig_path\" 2>&1 && echo 'Signed with /run/secrets/keys/code_sign_private'; "
+        "else "
+        "  echo 'Warning: code_sign_private key not found, update_versions will try to sign it'; "
+        "  : > \"$sig_path\"; "
+        "fi"
+    ).format(
+        bin_path=binary_full_path,
+        sig_path=sig_path
+    )
+    run_command(cmd_sign, check=False)  # Не критично, если не удалось подписать
 
     # Создаем version.xml для платформы
     version_xml = (
@@ -296,6 +326,24 @@ def process_app(app_name, count, target_nresults):
     create_workunits(app_name, count, target_nresults, tmpl_in_rel, tmpl_out_rel, placeholder_rel, cfg["version_num"])
 
 
+def ensure_signing_key():
+    """Убедиться, что ключ подписи существует и публичный ключ обновлен."""
+    key_path = "keys/code_sign_private_new"
+    pub_key_path = "keys/code_sign_public_new"
+    pub_key_main = "keys/code_sign_public"
+    cmd = (
+        "if [ ! -f {key} ] || [ -c {key} ]; then "
+        "echo 'Создаю ключ подписи...'; "
+        "bin/crypt_prog -genkey 1024 {key} {pub_key} >/dev/null 2>&1; "
+        "echo 'Ключ создан'; "
+        "fi && "
+        "if [ -f {pub_key} ]; then "
+        "cp {pub_key} {pub_key_main} && echo 'Публичный ключ обновлен'; "
+        "fi"
+    ).format(key=key_path, pub_key=pub_key_path, pub_key_main=pub_key_main)
+    run_command(cmd, check=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Создание нативных задач из готовых бинарей (create_work)")
     parser.add_argument("--app", choices=list(APP_CONFIGS.keys()), help="Создать задачи только для одного приложения")
@@ -304,6 +352,7 @@ def main():
     args = parser.parse_args()
 
     ensure_download_hierarchy()
+    ensure_signing_key()  # Убеждаемся, что ключ подписи существует
 
     targets = [args.app] if args.app else list(APP_CONFIGS.keys())
 
