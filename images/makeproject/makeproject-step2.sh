@@ -57,7 +57,7 @@ if mysql -u root -e "" &> /dev/null ; then
     """
 fi
 
-(cd html/ops && ./db_schemaversion.php > ${PROJECT_ROOT}/db_revision)
+(cd html/ops && find . -name "*.php" -exec sed -i 's/\r$//' {} \; && php db_schemaversion.php > ${PROJECT_ROOT}/db_revision)
 
 bin/xadd
 yes | bin/update_versions
