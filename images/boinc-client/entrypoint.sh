@@ -1,46 +1,22 @@
 #!/bin/bash
+set -e
 
-# Исправление прав доступа для директорий BOINC
-# Согласно документации: https://github.com/BOINC/boinc/wiki/Create-a-BOINC-server-(cookbook)
-fix_permissions() {
-    local dir=$1
-    # Создаем директорию, если её нет
-    mkdir -p "$dir" 2>/dev/null || true
-    
-    if [ -d "$dir" ]; then
-        # Создаем необходимые поддиректории
-        mkdir -p "$dir/slots" 2>/dev/null || true
-        mkdir -p "$dir/projects" 2>/dev/null || true
-        
-        # Пробуем разные варианты пользователей
-        chown -R boinc:boinc "$dir" 2>/dev/null || \
-        chown -R boincadm:boincadm "$dir" 2>/dev/null || \
-        chown -R $(id -u):$(id -g) "$dir" 2>/dev/null || true
-        
-        # Устанавливаем права на запись для всех
-        chmod -R u+w "$dir" 2>/dev/null || true
-        chmod -R 755 "$dir" 2>/dev/null || true
-        
-        # Исправляем права для всех поддиректорий projects (создаются динамически)
-        if [ -d "$dir/projects" ]; then
-            find "$dir/projects" -type d -exec chmod 755 {} \; 2>/dev/null || true
-            find "$dir/projects" -type f -exec chmod 644 {} \; 2>/dev/null || true
-            chown -R boinc:boinc "$dir/projects" 2>/dev/null || \
-            chown -R boincadm:boincadm "$dir/projects" 2>/dev/null || \
-            chown -R $(id -u):$(id -g) "$dir/projects" 2>/dev/null || true
-        fi
-    fi
+# Создаем необходимые директории и устанавливаем права
+mkdir -p /var/lib/boinc/slots /var/lib/boinc/projects
+mkdir -p /var/lib/boinc/projects/172.26.176.1_boincserver
+mkdir -p /var/lib/boinc/projects/boincserver_boincserver
+mkdir -p /var/lib/boinc/projects/localhost_boincserver
+
+# Принудительно устанавливаем права на все директории (включая существующие в volume)
+chmod -R 755 /var/lib/boinc
+chown -R boinc:boinc /var/lib/boinc || {
+    # Если chown не работает, пробуем через find
+    find /var/lib/boinc -type d -exec chmod 755 {} \;
+    find /var/lib/boinc -type f -exec chmod 644 {} \;
+    find /var/lib/boinc -type d -exec chown boinc:boinc {} \; 2>/dev/null || true
+    find /var/lib/boinc -type f -exec chown boinc:boinc {} \; 2>/dev/null || true
 }
 
-# Исправляем права для обеих возможных директорий
-fix_permissions /var/lib/boinc
-fix_permissions /var/lib/boinc-client
-
-# Запускаем стандартную команду образа
-# Если аргументы не переданы, используем стандартную команду образа
-if [ $# -eq 0 ]; then
-    exec start-boinc.sh
-else
-    exec "$@"
-fi
+# Запускаем оригинальную команду
+exec "$@"
 
