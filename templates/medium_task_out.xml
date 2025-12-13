@@ -10,6 +10,7 @@
         <file_ref>
             <file_name><OUTFILE_0/></file_name>
             <open_name>result.txt</open_name>
+            <copy_file/>
         </file_ref>
     </result>
 </output_template>

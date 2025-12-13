@@ -1,37 +1,36 @@
 #!/usr/bin/env python3
 """
-Долгая задача - вычисление максимальной сложности (до 5 секунд)
+Долгая задача - точное время выполнения: 6 секунд
 """
 import time
 import sys
+import os
 
 def long_computation():
-    """Долгое вычисление (до 5 секунд)"""
+    """Долгая задача с точным временем выполнения: 6 секунд"""
     start = time.time()
-    max_time = 5.0  # Максимум 5 секунд
     
-    # Сложное вычисление: большие вычисления
-    result = 0
-    iterations = 0
-    
-    while time.time() - start < max_time:
-        # Вычисляем сумму квадратов для большого диапазона
-        for i in range(10000):
-            result += i**2
-        iterations += 1
+    # Точное время выполнения: 6 секунд
+    time.sleep(6.0)
     
     elapsed = time.time() - start
     
     print("Long task completed!")
-    print("Result: {}".format(result))
-    print("Iterations: {}".format(iterations))
     print("Time: {:.3f} seconds".format(elapsed))
     
     # Сохранить результат
-    with open('/root/shared/results/result.txt', 'w') as f:
-        f.write("Long task result: {}\n".format(result))
-        f.write("Iterations: {}\n".format(iterations))
-        f.write("Computation time: {:.3f} seconds\n".format(elapsed))
+    # BOINC ожидает файл с логическим именем (open_name) в текущей директории
+    with open('result.txt', 'w') as f:
+        f.write("Long task completed\n")
+        f.write("Execution time: {:.3f} seconds\n".format(elapsed))
+        f.flush()
+        os.fsync(f.fileno())
+    
+    # Создаем файл boinc_finish_called для уведомления BOINC об успешном завершении
+    with open('boinc_finish_called', 'w') as f:
+        f.write('0\n')
+        f.flush()
+        os.fsync(f.fileno())
 
 if __name__ == "__main__":
     long_computation()

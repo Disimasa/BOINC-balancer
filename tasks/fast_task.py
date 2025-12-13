@@ -1,27 +1,53 @@
 #!/usr/bin/env python3
 """
-Быстрая задача - простое вычисление (около 0.1-0.5 секунды)
+Быстрая задача - точное время выполнения: 1 секунда
 """
 import time
 import sys
+import os
 
 def fast_computation():
-    """Быстрое вычисление"""
+    """Быстрая задача с точным временем выполнения: 1 секунда"""
     start = time.time()
     
-    # Простое вычисление: сумма квадратов
-    result = sum(i**2 for i in range(1000))
+    # Точное время выполнения: 1 секунда
+    time.sleep(1.0)
     
     elapsed = time.time() - start
     
     print("Fast task completed!")
-    print("Result: {}".format(result))
     print("Time: {:.3f} seconds".format(elapsed))
     
     # Сохранить результат
-    with open('/root/shared/results/result.txt', 'w') as f:
-        f.write("Fast task result: {}\n".format(result))
-        f.write("Computation time: {:.3f} seconds\n".format(elapsed))
+    # BOINC ожидает файл с логическим именем (open_name) в текущей директории
+    cwd = os.getcwd()
+    output_file = 'result.txt'
+    output_path = os.path.join(cwd, output_file)
+    
+    print("Current directory: {}".format(cwd), file=sys.stderr)
+    print("Writing output to: {}".format(output_path), file=sys.stderr)
+    
+    with open(output_file, 'w') as f:
+        f.write("Fast task completed\n")
+        f.write("Execution time: {:.3f} seconds\n".format(elapsed))
+        f.flush()
+        os.fsync(f.fileno())
+    
+    # Проверяем, что файл создан
+    if os.path.exists(output_file):
+        size = os.path.getsize(output_file)
+        print("Output file created: {} ({} bytes)".format(output_path, size), file=sys.stderr)
+    else:
+        print("ERROR: Output file not created: {}".format(output_path), file=sys.stderr)
+        sys.exit(1)
+    
+    # Создаем файл boinc_finish_called для уведомления BOINC об успешном завершении
+    finish_file = 'boinc_finish_called'
+    with open(finish_file, 'w') as f:
+        f.write('0\n')
+        f.flush()
+        os.fsync(f.fileno())
+    print("Finish file created: {}".format(finish_file), file=sys.stderr)
 
 if __name__ == "__main__":
     fast_computation()

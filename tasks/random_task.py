@@ -1,41 +1,42 @@
 #!/usr/bin/env python3
 """
-Задача с рандомной сложностью - случайное время выполнения
+Задача с рандомной сложностью - случайное время выполнения от 1 до 6 секунд
 """
 import time
 import random
 import sys
+import os
 
 def random_computation():
-    """Вычисление со случайной сложностью"""
+    """Задача со случайным временем выполнения: от 1 до 6 секунд"""
     start = time.time()
     
-    # Случайная сложность: от 0.5 до 4.5 секунд
-    target_time = random.uniform(0.5, 4.5)
+    # Случайное время выполнения: от 1 до 6 секунд
+    target_time = random.uniform(1.0, 6.0)
     
-    result = 0
-    iterations = 0
-    
-    while time.time() - start < target_time:
-        # Вычисляем сумму квадратов
-        for i in range(random.randint(1000, 10000)):
-            result += i**2
-        iterations += 1
+    # Точное время выполнения через sleep
+    time.sleep(target_time)
     
     elapsed = time.time() - start
     
     print("Random task completed!")
     print("Target time: {:.3f} seconds".format(target_time))
     print("Actual time: {:.3f} seconds".format(elapsed))
-    print("Result: {}".format(result))
-    print("Iterations: {}".format(iterations))
     
     # Сохранить результат
-    with open('/root/shared/results/result.txt', 'w') as f:
-        f.write("Random task result: {}\n".format(result))
+    # BOINC ожидает файл с логическим именем (open_name) в текущей директории
+    with open('result.txt', 'w') as f:
+        f.write("Random task completed\n")
         f.write("Target time: {:.3f} seconds\n".format(target_time))
         f.write("Actual time: {:.3f} seconds\n".format(elapsed))
-        f.write("Iterations: {}\n".format(iterations))
+        f.flush()
+        os.fsync(f.fileno())
+    
+    # Создаем файл boinc_finish_called для уведомления BOINC об успешном завершении
+    with open('boinc_finish_called', 'w') as f:
+        f.write('0\n')
+        f.flush()
+        os.fsync(f.fileno())
 
 if __name__ == "__main__":
     random_computation()

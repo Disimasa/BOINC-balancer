@@ -1,34 +1,36 @@
 #!/usr/bin/env python3
 """
-Средняя задача - вычисление средней сложности (около 1-2 секунды)
+Средняя задача - точное время выполнения: 3 секунды
 """
 import time
 import sys
+import os
 
 def medium_computation():
-    """Среднее вычисление"""
+    """Средняя задача с точным временем выполнения: 3 секунды"""
     start = time.time()
     
-    # Более сложное вычисление: сумма квадратов для большего диапазона
-    result = sum(i**2 for i in range(10000))
-    
-    # Дополнительные вычисления
-    total = 0
-    for i in range(5000):
-        total += i * 2
+    # Точное время выполнения: 3 секунды
+    time.sleep(3.0)
     
     elapsed = time.time() - start
     
     print("Medium task completed!")
-    print("Result: {}".format(result))
-    print("Additional computation: {}".format(total))
     print("Time: {:.3f} seconds".format(elapsed))
     
     # Сохранить результат
-    with open('/root/shared/results/result.txt', 'w') as f:
-        f.write("Medium task result: {}\n".format(result))
-        f.write("Additional computation: {}\n".format(total))
-        f.write("Computation time: {:.3f} seconds\n".format(elapsed))
+    # BOINC ожидает файл с логическим именем (open_name) в текущей директории
+    with open('result.txt', 'w') as f:
+        f.write("Medium task completed\n")
+        f.write("Execution time: {:.3f} seconds\n".format(elapsed))
+        f.flush()
+        os.fsync(f.fileno())
+    
+    # Создаем файл boinc_finish_called для уведомления BOINC об успешном завершении
+    with open('boinc_finish_called', 'w') as f:
+        f.write('0\n')
+        f.flush()
+        os.fsync(f.fileno())
 
 if __name__ == "__main__":
     medium_computation()
