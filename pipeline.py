@@ -163,8 +163,33 @@ def step_create_apps():
     print("ШАГ 3: Создание приложений")
     print("=" * 80)
     
-    # create_apps.py теперь автоматически запускает валидаторы и ассимиляторы
     return run_python_script("create_apps.py")
+
+
+def step_start_daemons():
+    """Шаг 3.5: Запуск валидаторов и ассимиляторов"""
+    print("\n" + "=" * 80)
+    print("ШАГ 3.5: Запуск валидаторов и ассимиляторов")
+    print("=" * 80)
+    
+    # Даем время контейнеру полностью запуститься
+    print("Ожидание готовности контейнера...")
+    time.sleep(3)
+    
+    # Импортируем функцию запуска демонов
+    try:
+        from start_daemons import start_all_daemons
+        result = start_all_daemons()
+        if result:
+            print("\n✓ Валидаторы и ассимиляторы успешно запущены")
+        else:
+            print("\n⚠ Предупреждение: некоторые валидаторы или ассимиляторы не запустились", file=sys.stderr)
+        return result
+    except Exception as e:
+        print(f"\n✗ Ошибка при запуске валидаторов и ассимиляторов: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 def step_create_user():
@@ -222,6 +247,7 @@ def main():
         ("Генерация ключей подписи", step_generate_keys),
         ("Обновление конфигурации кеширования", step_update_cache_config),
         ("Создание приложений", step_create_apps),  # Приложения создаются ДО подключения клиентов
+        ("Запуск валидаторов и ассимиляторов", step_start_daemons),  # Валидаторы и ассимиляторы запускаются после создания приложений
         ("Создание пользователя", step_create_user),
         ("Подключение клиентов", step_connect_clients),  # Клиенты подключаются ПОСЛЕ создания приложений
         ("Создание задач", step_create_tasks),
@@ -244,7 +270,9 @@ def main():
     print("=" * 80)
     print("\nВсе шаги выполнены успешно:")
     print("  ✓ Контейнеры запущены")
+    print("  ✓ Ключи подписи сгенерированы")
     print("  ✓ Приложения созданы")
+    print("  ✓ Валидаторы и ассимиляторы запущены")
     print("  ✓ Пользователь создан")
     print("  ✓ Клиенты подключены")
     print("  ✓ Задачи созданы")

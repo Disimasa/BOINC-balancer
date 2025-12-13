@@ -23,26 +23,26 @@ CONTAINER_NAME = "server-apache-1"
 APP_CONFIGS = {
     "fast_task": {
         "script": "tasks/fast_task.py",
-        "default_count": 100,
-        "target_nresults": 2,
+        "default_count": 5,
+        "target_nresults": 1,
         "version_num": "100"
     },
     "medium_task": {
         "script": "tasks/medium_task.py",
-        "default_count": 100,
-        "target_nresults": 2,
+        "default_count": 5,
+        "target_nresults": 1,
         "version_num": "100"
     },
     "long_task": {
         "script": "tasks/long_task.py",
-        "default_count": 100,
-        "target_nresults": 2,
+        "default_count": 5,
+        "target_nresults": 1,
         "version_num": "100"
     },
     "random_task": {
         "script": "tasks/random_task.py",
-        "default_count": 100,
-        "target_nresults": 2,
+        "default_count": 5,
+        "target_nresults": 1,
         "version_num": "100"
     }
 }
@@ -64,10 +64,18 @@ def run_command(cmd, check=True, capture_output=False):
         proc = subprocess.Popen(
             full_cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
+            stderr=subprocess.PIPE
         )
-        stdout, stderr = proc.communicate()
+        stdout_bytes, stderr_bytes = proc.communicate()
+        
+        # Декодируем с обработкой ошибок кодировки
+        try:
+            stdout = stdout_bytes.decode('utf-8', errors='replace') if stdout_bytes else ""
+            stderr = stderr_bytes.decode('utf-8', errors='replace') if stderr_bytes else ""
+        except Exception as decode_error:
+            # Если не удалось декодировать, используем latin-1 как fallback
+            stdout = stdout_bytes.decode('latin-1', errors='replace') if stdout_bytes else ""
+            stderr = stderr_bytes.decode('latin-1', errors='replace') if stderr_bytes else ""
         
         if capture_output:
             # Возвращаем stdout как строку
@@ -289,26 +297,17 @@ def ensure_download_hierarchy():
     run_command(cmd, check=False)
 
 
+def update_versions():
+    """Запустить update_versions с автоответом yes."""
+    cmd = "yes | bin/update_versions 2>&1"
+    return run_command(cmd, check=False)
+
+
 def register_app(app_name, friendly_name=None):
     """Добавить приложение в БД (xadd), если его не было."""
     title = friendly_name or app_name
     cmd = "bin/xadd {app} \"{title}\" \"\"".format(app=app_name, title=title)
     run_command(cmd, check=False)  # допускаем, что уже существует
-
-
-def update_versions():
-    """Запустить update_versions с автоответом yes."""
-    cmd = "yes | bin/update_versions 2>&1"
-    result = run_command(cmd, check=False, capture_output=True)
-    # Выводим результат для диагностики
-    if result:
-        # Показываем только важные строки
-        lines = result.split('\n')
-        for line in lines:
-            if any(keyword in line.lower() for keyword in ['error', 'added', 'found', 'app version', 'signature']):
-                if line.strip():
-                    print(f"    {line}")
-    return result
 
 
 def get_app_version_id(app_name, version_num):
@@ -510,7 +509,7 @@ def main():
     parser = argparse.ArgumentParser(description="Создание нативных задач из готовых бинарей (create_work)")
     parser.add_argument("--app", choices=list(APP_CONFIGS.keys()), help="Создать задачи только для одного приложения")
     parser.add_argument("--count", type=int, help="Количество задач (для одного app или для всех)")
-    parser.add_argument("--target-nresults", type=int, default=2, help="Количество репликаций (по умолчанию 2)")
+    parser.add_argument("--target-nresults", type=int, default=1, help="Количество репликаций (по умолчанию 1)")
     args = parser.parse_args()
 
     ensure_download_hierarchy()
@@ -525,20 +524,41 @@ def main():
 
     # Если создаем для всех приложений - создаем батчами по 4 (по одной каждого типа)
     if not args.app and len(targets) > 1:
-        # Сначала подготавливаем шаблоны для всех приложений
+        # ВАЖНО: Бинарные файлы и версии приложений должны быть установлены в create_apps.py
+        # Здесь мы только подготавливаем шаблоны для создания задач
         print("\nПодготовка шаблонов для всех приложений...")
         app_templates = {}
         for app_name in targets:
-            cfg = APP_CONFIGS[app_name]
-            binary_path = os.path.join(PROJECT_HOME, "dist_bin", "{}_bin".format(app_name))
-            ok_install, tmpl_in_rel, tmpl_out_rel, placeholder_rel = install_app_binary(
-                app_name, binary_path, cfg["version_num"]
-            )
-            if ok_install and tmpl_in_rel and tmpl_out_rel:
-                app_templates[app_name] = (tmpl_in_rel, tmpl_out_rel, placeholder_rel)
-                print(f"  ✓ {app_name}: шаблоны подготовлены")
-            else:
+            # Убеждаемся, что шаблоны и placeholder скопированы в контейнер
+            if not ensure_templates_and_placeholder(app_name):
                 print(f"  ✗ {app_name}: ошибка подготовки шаблонов", file=sys.stderr)
+                continue
+            
+            # Используем шаблоны в каталоге templates и placeholder в корне проекта
+            tmpl_in_rel = "templates/{}_in.xml".format(app_name)
+            tmpl_out_rel = "templates/{}_out.xml".format(app_name)
+            placeholder_rel = "input_placeholder"
+            
+            # Создаём шаблоны БЕЗ расширения .xml (как требует create_work)
+            tmpl_in_base = os.path.basename(tmpl_in_rel).replace('.xml', '')
+            tmpl_out_base = os.path.basename(tmpl_out_rel).replace('.xml', '')
+            cmd_create_templates = (
+                "cp templates/{} templates/{} && "
+                "cp templates/{} templates/{}"
+            ).format(
+                os.path.basename(tmpl_in_rel), tmpl_in_base,
+                os.path.basename(tmpl_out_rel), tmpl_out_base
+            )
+            if run_command(cmd_create_templates, check=False):
+                # Используем stage_file для копирования входного файла в download/
+                cmd_stage = "bin/stage_file --copy {}".format(placeholder_rel)
+                if run_command(cmd_stage, check=False):
+                    app_templates[app_name] = (tmpl_in_base, tmpl_out_base, os.path.basename(placeholder_rel))
+                    print(f"  ✓ {app_name}: шаблоны подготовлены")
+                else:
+                    print(f"  ✗ {app_name}: ошибка при stage_file", file=sys.stderr)
+            else:
+                print(f"  ✗ {app_name}: ошибка создания шаблонов", file=sys.stderr)
         
         if len(app_templates) != len(targets):
             print("✗ Не удалось подготовить шаблоны для всех приложений", file=sys.stderr)
@@ -548,22 +568,9 @@ def main():
         # for app_name in targets:
         #     register_app(app_name, friendly_name=app_name.replace("_", " ").title())
         
-        # Регистрируем приложения в БД (если еще не зарегистрированы)
-        print("\nРегистрация приложений в БД (xadd)...")
-        run_command("bin/xadd", check=False)
-        
-        # Обновляем версии ПЕРЕД созданием задач, чтобы app_version_id был доступен
-        # Это критично, так как create_work использует app_version_num, но не ищет app_version_id автоматически
-        # update_versions автоматически подпишет файлы, если .sig файлы отсутствуют
-        print("\nОбновление версий приложений (необходимо для правильного app_version_id)...")
-        print("  (update_versions автоматически подпишет файлы, если они не подписаны)")
-        update_versions()
-        
-        # Даем время БД обновиться
-        time.sleep(2)
-        
-        # Проверяем, что версии были созданы
-        print("\nПроверка созданных версий...")
+        # ВАЖНО: Бинарные файлы и версии приложений должны быть установлены в create_apps.py
+        # Здесь мы только проверяем, что версии существуют
+        print("\nПроверка версий приложений (должны быть созданы в create_apps.py)...")
         all_versions_ok = True
         for app_name in targets:
             app_version_id = get_app_version_id(app_name, APP_CONFIGS[app_name]["version_num"])
@@ -571,24 +578,13 @@ def main():
                 print(f"  ✓ {app_name}: app_version_id = {app_version_id}")
             else:
                 print(f"  ✗ {app_name}: версия не найдена в БД!", file=sys.stderr)
+                print(f"     Убедитесь, что create_apps.py был запущен и бинарные файлы установлены.", file=sys.stderr)
                 all_versions_ok = False
         
         if not all_versions_ok:
-            print("\n⚠ ВНИМАНИЕ: Не все версии были созданы!", file=sys.stderr)
-            print("  Пробую повторно запустить update_versions...", file=sys.stderr)
-            update_versions()
-            time.sleep(2)
-            
-            # Повторная проверка
-            print("\nПовторная проверка версий...")
-            all_versions_ok = True
-            for app_name in targets:
-                app_version_id = get_app_version_id(app_name, APP_CONFIGS[app_name]["version_num"])
-                if app_version_id:
-                    print(f"  ✓ {app_name}: app_version_id = {app_version_id}")
-                else:
-                    print(f"  ✗ {app_name}: версия все еще не найдена!", file=sys.stderr)
-                    all_versions_ok = False
+            print("\n✗ ОШИБКА: Не все версии приложений найдены!", file=sys.stderr)
+            print("  Запустите create_apps.py для установки бинарных файлов и создания версий.", file=sys.stderr)
+            return False
         
         # Определяем количество задач на приложение
         count_per_app = args.count if args.count is not None else APP_CONFIGS[targets[0]]["default_count"]
@@ -645,8 +641,8 @@ def main():
     else:
         # Для одного приложения - последовательно
         # Обновляем версии ПЕРЕД созданием задач
-        print("\nОбновление версий приложений (необходимо для правильного app_version_id)...")
-        update_versions()
+        # print("\nОбновление версий приложений (необходимо для правильного app_version_id)...")
+        # update_versions()
         
         for app_name in targets:
             cfg = APP_CONFIGS[app_name]
@@ -655,8 +651,8 @@ def main():
             process_app(app_name, count, tr)
     
     # Перезапускаем feeder, чтобы он увидел новые задачи
-    print("\nПерезапуск feeder для применения изменений...")
-    run_command("bin/stop && sleep 2 && bin/start", check=False)
+    # print("\nПерезапуск feeder для применения изменений...")
+    # run_command("bin/stop && sleep 2 && bin/start", check=False)
     
     print("\nГотово. Проверьте в интерфейсе количество задач и готовность к отправке.")
 
