@@ -7,11 +7,15 @@ import sys
 import os
 
 def fast_computation():
-    """Быстрая задача с точным временем выполнения: 1 секунда"""
+    """Быстрая задача с точным временем выполнения: ~1 секунда"""
     start = time.time()
     
-    # Точное время выполнения: 1 секунда
-    time.sleep(1.0)
+    # Вычисления для нагружения CPU (~1 секунда)
+    # Вычисление суммы квадратов чисел
+    result = 0
+    iterations = 20000000  # Примерно 1 секунда на среднем CPU
+    for i in range(iterations):
+        result += i * i
     
     elapsed = time.time() - start
     
@@ -30,6 +34,8 @@ def fast_computation():
     with open(output_file, 'w') as f:
         f.write("Fast task completed\n")
         f.write("Execution time: {:.3f} seconds\n".format(elapsed))
+        f.write("Iterations: {}\n".format(iterations))
+        f.write("Result: {}\n".format(result % 1000000))  # Последние 6 цифр для проверки
         f.flush()
         os.fsync(f.fileno())
     

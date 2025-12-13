@@ -8,6 +8,7 @@ import subprocess
 import sys
 import argparse
 import os
+import threading
 
 PROJECT_HOME = "/home/boincadm/project"
 CONTAINER_NAME = "server-apache-1"
@@ -16,22 +17,22 @@ CONTAINER_NAME = "server-apache-1"
 TASK_CONFIGS = {
     "fast_task": {
         "script": "fast_task.py",
-        "default_count": 20,
+        "default_count": 200,
         "target_nresults": 2
     },
     "medium_task": {
         "script": "medium_task.py",
-        "default_count": 15,
+        "default_count": 200,
         "target_nresults": 2
     },
     "long_task": {
         "script": "long_task.py",
-        "default_count": 10,
+        "default_count": 200,
         "target_nresults": 2
     },
     "random_task": {
         "script": "random_task.py",
-        "default_count": 15,
+        "default_count": 200,
         "target_nresults": 2
     }
 }
@@ -180,7 +181,7 @@ def create_tasks_for_app(app_name, count, target_nresults, batch_id=1):
             appname=app_name,
             wu_name=wu_name,
             target_nresults=target_nresults,
-            min_quorum=target_nresults // 2 + 1,
+            min_quorum=1,
             batch_id=batch_id,
             script_code=script_code
         )
@@ -205,16 +206,41 @@ def update_versions():
 
 
 def create_all_tasks(counts=None, target_nresults=None):
-    """Создать задачи для всех Apps"""
+    """Создать задачи для всех Apps (параллельно)"""
     if counts is None:
         counts = {}
     if target_nresults is None:
         target_nresults = {}
 
+    threads = []
+    errors = []
+    
+    def create_tasks_thread(app_name, count, tr):
+        try:
+            create_tasks_for_app(app_name, count, tr)
+        except Exception as e:
+            errors.append((app_name, str(e)))
+            print(f"✗ Ошибка при создании задач для {app_name}: {e}", file=sys.stderr)
+    
     for app_name, config in TASK_CONFIGS.items():
         count = counts.get(app_name, config["default_count"])
         tr = target_nresults.get(app_name, config["target_nresults"])
-        create_tasks_for_app(app_name, count, tr)
+        
+        thread = threading.Thread(target=create_tasks_thread, args=(app_name, count, tr))
+        thread.start()
+        threads.append(thread)
+    
+    # Ждем завершения всех потоков
+    for thread in threads:
+        thread.join()
+    
+    if errors:
+        print(f"\n⚠ Обнаружены ошибки при создании задач: {len(errors)}", file=sys.stderr)
+        for app_name, error in errors:
+            print(f"  - {app_name}: {error}", file=sys.stderr)
+        return False
+    
+    return True
 
 
 def main():

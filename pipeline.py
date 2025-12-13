@@ -17,6 +17,9 @@ import time
 import os
 from pathlib import Path
 
+# Импортируем функцию генерации ключей
+from generate_keys import generate_signing_keys
+
 # Определяем директорию скрипта
 SCRIPT_DIR = Path(__file__).parent.absolute()
 
@@ -114,10 +117,15 @@ def step_build():
     return True
 
 
+def step_generate_keys():
+    """Шаг 2.5: Генерация ключей подписи кода"""
+    return generate_signing_keys()
+
+
 def step_update_cache_config():
-    """Шаг 2.5: Обновление конфигурации кеширования после создания проекта"""
+    """Шаг 2.6: Обновление конфигурации кеширования после создания проекта"""
     print("\n" + "=" * 80)
-    print("ШАГ 2.5: Обновление конфигурации кеширования")
+    print("ШАГ 2.6: Обновление конфигурации кеширования")
     print("=" * 80)
     
     project_name = os.environ.get("PROJECT", "boincserver")
@@ -191,7 +199,15 @@ def step_create_tasks():
     print("Ожидание подключения клиентов...")
     time.sleep(5)
     
-    return run_python_script("create_tasks_bin.py")
+    # Создаем задачи
+    if not run_python_script("create_tasks_bin.py"):
+        return False
+    
+    # Принудительно обновляем клиентов, чтобы они запросили задачи
+    print("\n" + "=" * 80)
+    print("ШАГ 6.5: Принудительное обновление клиентов")
+    print("=" * 80)
+    return run_python_script("update_clients.py")
 
 
 def main():
@@ -203,11 +219,12 @@ def main():
     steps = [
         ("Очистка", step_cleanup),
         ("Сборка и запуск", step_build),
+        ("Генерация ключей подписи", step_generate_keys),
         ("Обновление конфигурации кеширования", step_update_cache_config),
-        ("Создание приложений", step_create_apps),
-        ("Создание задач", step_create_tasks),
+        ("Создание приложений", step_create_apps),  # Приложения создаются ДО подключения клиентов
         ("Создание пользователя", step_create_user),
-        ("Подключение клиентов", step_connect_clients),
+        ("Подключение клиентов", step_connect_clients),  # Клиенты подключаются ПОСЛЕ создания приложений
+        ("Создание задач", step_create_tasks),
     ]
     
     for step_name, step_func in steps:

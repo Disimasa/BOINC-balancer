@@ -8,27 +8,34 @@ import sys
 import os
 
 def random_computation():
-    """Задача со случайным временем выполнения: от 1 до 6 секунд"""
+    """Задача со случайным временем выполнения: от ~1 до ~6 секунд"""
     start = time.time()
     
-    # Случайное время выполнения: от 1 до 6 секунд
-    target_time = random.uniform(1.0, 6.0)
+    # Случайное количество итераций для разного времени выполнения
+    # От ~1 до ~6 секунд на среднем CPU
+    min_iterations = 20000000   # ~1 секунда
+    max_iterations = 120000000  # ~6 секунд
+    iterations = random.randint(min_iterations, max_iterations)
     
-    # Точное время выполнения через sleep
-    time.sleep(target_time)
+    # Вычисления для нагружения CPU
+    result = 0
+    for i in range(iterations):
+        # Смешанные вычисления
+        result += i * (i % 100) + (i * i) % 1000
     
     elapsed = time.time() - start
     
     print("Random task completed!")
-    print("Target time: {:.3f} seconds".format(target_time))
+    print("Iterations: {}".format(iterations))
     print("Actual time: {:.3f} seconds".format(elapsed))
     
     # Сохранить результат
     # BOINC ожидает файл с логическим именем (open_name) в текущей директории
     with open('result.txt', 'w') as f:
         f.write("Random task completed\n")
-        f.write("Target time: {:.3f} seconds\n".format(target_time))
-        f.write("Actual time: {:.3f} seconds\n".format(elapsed))
+        f.write("Iterations: {}\n".format(iterations))
+        f.write("Execution time: {:.3f} seconds\n".format(elapsed))
+        f.write("Result: {}\n".format(result % 1000000))  # Последние 6 цифр для проверки
         f.flush()
         os.fsync(f.fileno())
     

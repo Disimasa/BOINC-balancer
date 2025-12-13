@@ -13,10 +13,10 @@ PROJECT_HOME = "/home/boincadm/project"
 CONTAINER_NAME = "server-apache-1"
 
 apps = [
-    {"name": "fast_task", "resultsdir": "/results/fast_task"},
-    {"name": "medium_task", "resultsdir": "/results/medium_task"},
-    {"name": "long_task", "resultsdir": "/results/long_task"},
-    {"name": "random_task", "resultsdir": "/results/random_task"}
+    {"name": "fast_task", "resultsdir": "/results/fast_task", "weight": 1.0},
+    {"name": "medium_task", "resultsdir": "/results/medium_task", "weight": 1.0},
+    {"name": "long_task", "resultsdir": "/results/long_task", "weight": 1.0},
+    {"name": "random_task", "resultsdir": "/results/random_task", "weight": 1.0}
 ]
 
 
@@ -35,9 +35,9 @@ def run_cmd(cmd, check=True):
     return proc.returncode == 0
 
 
-def create_app(app_name, resultsdir):
+def create_app(app_name, resultsdir, weight=1.0):
     """Создать приложение"""
-    print("\nСоздаю App: {}".format(app_name))
+    print("\nСоздаю App: {} (weight={})".format(app_name, weight))
     
     # Структура директорий
     run_cmd("cd {} && mkdir -p apps/{}/1.0/x86_64-pc-linux-gnu".format(PROJECT_HOME, app_name), check=False)
@@ -72,6 +72,13 @@ chmod +x bin/{}_assimilator && chown boincadm:boincadm bin/{}_assimilator""".for
     # Добавляем в БД
     run_cmd("cd {} && bin/xadd".format(PROJECT_HOME), check=False)
     
+    # Устанавливаем вес приложения через SQL (appmgr требует MySQLdb, которого может не быть)
+    run_cmd("""cd {} && mysql -u root -ppassword boincserver -e "UPDATE app SET weight = {} WHERE name = '{}';" """.format(
+        PROJECT_HOME, weight, app_name
+    ), check=False)
+    
+    print("  ✓ Weight установлен: {}".format(weight))
+    
     return True
 
 
@@ -86,6 +93,13 @@ def setup_daemons():
     # Права доступа на директории результатов
     results_dirs = " ".join([app['resultsdir'] for app in apps])
     run_cmd("mkdir -p {} && chown -R boincadm:boincadm /results && chmod -R 755 /results".format(results_dirs), check=False)
+    
+    # Добавляем флаги --allapps и --random_order_db к feeder для перемешивания задач
+    # --allapps: перемешивает задачи по приложениям пропорционально весам
+    # --random_order_db: выбирает задачи в случайном порядке из БД
+    # Обновляем команду feeder независимо от того, есть ли уже флаги
+    run_cmd("""cd {} && sed -i 's|<cmd>feeder -d 3[^<]*</cmd>|<cmd>feeder -d 3 --allapps --random_order_db</cmd>|g' config.xml""".format(PROJECT_HOME), check=False)
+    print("  ✓ Feeder настроен с флагами --allapps --random_order_db")
     
     # Перезапуск демонов
     run_cmd("cd {} && bin/stop && sleep 2 && bin/start".format(PROJECT_HOME), check=False)
@@ -111,7 +125,8 @@ def create_apps():
     print("=" * 60)
     
     for app in apps:
-        create_app(app['name'], app['resultsdir'])
+        weight = app.get('weight', 1.0)  # По умолчанию weight = 1.0
+        create_app(app['name'], app['resultsdir'], weight)
     
     print("\n" + "=" * 60)
     print("Настройка валидаторов и ассимиляторов...")
