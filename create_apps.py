@@ -1,147 +1,107 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Скрипт для создания 4 Apps в BOINC:
-1. fast_task - быстрая задача
-2. medium_task - средняя задача
-3. long_task - долгая задача (макс 5 секунд)
-4. random_task - задача с рандомной сложностью
+Скрипт для создания Apps в BOINC и настройки валидаторов/ассимиляторов
 """
 
 from __future__ import print_function
 import subprocess
 import sys
-import os
 import time
 
 PROJECT_HOME = "/home/boincadm/project"
 CONTAINER_NAME = "server-apache-1"
 
 apps = [
-    {
-        "name": "fast_task",
-        "friendly_name": "Fast Task",
-        "resultsdir": "/results/fast_task"
-    },
-    {
-        "name": "medium_task",
-        "friendly_name": "Medium Task",
-        "resultsdir": "/results/medium_task"
-    },
-    {
-        "name": "long_task",
-        "friendly_name": "Long Task (max 5s)",
-        "resultsdir": "/results/long_task"
-    },
-    {
-        "name": "random_task",
-        "friendly_name": "Random Complexity Task",
-        "resultsdir": "/results/random_task"
-    }
+    {"name": "fast_task", "resultsdir": "/results/fast_task"},
+    {"name": "medium_task", "resultsdir": "/results/medium_task"},
+    {"name": "long_task", "resultsdir": "/results/long_task"},
+    {"name": "random_task", "resultsdir": "/results/random_task"}
 ]
 
 
-def run_command(cmd, check=True):
-    """Выполнить команду в контейнере apache"""
-    full_cmd = [
-        "wsl.exe", "-e", "docker", "exec", CONTAINER_NAME,
-        "bash", "-c", cmd
-    ]
-    print("Выполняю: {}".format(cmd))
-    try:
-        proc = subprocess.Popen(
-            full_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        stdout, stderr = proc.communicate()
-        if stdout:
-            print(stdout, end='')
-        if stderr:
-            print(stderr, file=sys.stderr, end='')
-        if check and proc.returncode != 0:
-            print("Ошибка: команда завершилась с кодом {}".format(proc.returncode), file=sys.stderr)
-            sys.exit(1)
-        return proc
-    except Exception as e:
-        print("Исключение при выполнении команды: {}".format(e), file=sys.stderr)
+def run_cmd(cmd, check=True):
+    """Выполнить команду в контейнере"""
+    full_cmd = ["wsl.exe", "-e", "docker", "exec", CONTAINER_NAME, "bash", "-c", cmd]
+    proc = subprocess.Popen(full_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    stdout, stderr = proc.communicate()
+    if stdout:
+        print(stdout, end='')
+    if stderr:
+        print(stderr, file=sys.stderr, end='')
+    if check and proc.returncode != 0:
+        print("Ошибка: команда завершилась с кодом {}".format(proc.returncode), file=sys.stderr)
         sys.exit(1)
+    return proc.returncode == 0
 
 
 def create_app(app_name, resultsdir):
-    """Создать приложение для нативных бинарников (не boinc2docker)"""
+    """Создать приложение"""
     print("\nСоздаю App: {}".format(app_name))
     
-    # Создаем структуру для нативного приложения (x86_64-pc-linux-gnu без __vbox64_mt)
-    # Бинарники будут добавлены позже через create_tasks_bin.py
-    cmd = (
-        "cd {projhome} && "
-        "mkdir -p apps/{appname}/1.0/x86_64-pc-linux-gnu"
-    ).format(projhome=PROJECT_HOME, appname=app_name)
+    # Структура директорий
+    run_cmd("cd {} && mkdir -p apps/{}/1.0/x86_64-pc-linux-gnu".format(PROJECT_HOME, app_name), check=False)
     
-    if not run_command(cmd, check=False):
-        print("Ошибка при создании структуры для {}".format(app_name), file=sys.stderr)
-        return False
+    # Assimilator скрипт
+    run_cmd("""cd {} && cat > bin/{}_assimilator << 'EOF'
+#!/bin/bash
+RESULTS_DIR={}
+mkdir -p "$RESULTS_DIR"
+for file in "$@"; do
+    [ -f "$file" ] && cp "$file" "$RESULTS_DIR/"
+done
+EOF
+chmod +x bin/{}_assimilator && chown boincadm:boincadm bin/{}_assimilator""".format(
+        PROJECT_HOME, app_name, resultsdir, app_name, app_name
+    ), check=False)
     
-    # Создаем assimilator
-    cmd = (
-        "cd {projhome} && "
-        "cat > bin/{appname}_assimilator << 'EOF'\n"
-        "#!/bin/bash\n"
-        "# Assimilator for {appname}\n"
-        "RESULTS_DIR={resultsdir}\n"
-        "mkdir -p \"$RESULTS_DIR\"\n"
-        "# Копируем результаты\n"
-        "for file in \"$@\"; do\n"
-        "    if [ -f \"$file\" ]; then\n"
-        "        cp \"$file\" \"$RESULTS_DIR/\"\n"
-        "    fi\n"
-        "done\n"
-        "EOF\n"
-        "chmod +x bin/{appname}_assimilator"
-    ).format(projhome=PROJECT_HOME, appname=app_name, resultsdir=resultsdir)
+    # Добавляем в config.xml
+    run_cmd("""cd {} && if ! grep -q 'sample_trivial_validator.*{}' config.xml; then
+        sed -i '/<\\/daemons>/i\\        <daemon>\\n            <cmd>sample_trivial_validator -app {}</cmd>\\n        </daemon>' config.xml
+    fi""".format(PROJECT_HOME, app_name, app_name), check=False)
     
-    if not run_command(cmd, check=False):
-        print("Ошибка при создании assimilator для {}".format(app_name), file=sys.stderr)
-        return False
+    run_cmd("""cd {} && if ! grep -q '{}_assimilator' config.xml; then
+        sed -i '/<\\/daemons>/i\\        <daemon>\\n            <cmd>script_assimilator --app {} --script "{}_assimilator files"</cmd>\\n        </daemon>' config.xml
+    fi""".format(PROJECT_HOME, app_name, app_name, app_name), check=False)
     
-    # Обновляем config.xml - добавляем validator и assimilator
-    # Добавляем validator (sample_trivial_validator принимает все результаты как корректные)
-    cmd_validator = (
-        "cd {projhome} && "
-        "if ! grep -q 'sample_trivial_validator.*{appname}' config.xml; then "
-        "sed -i '/<\\/daemons>/i\\        <daemon>\\n            <cmd>sample_trivial_validator -app {appname}</cmd>\\n        </daemon>' config.xml; "
-        "fi"
-    ).format(projhome=PROJECT_HOME, appname=app_name)
-    run_command(cmd_validator, check=False)
+    # Добавляем в project.xml
+    run_cmd("""cd {} && if ! grep -q '<name>{}</name>' project.xml; then
+        sed -i '/<\\/boinc>/i\\    <app>\\n        <name>{}</name>\\n        <user_friendly_name>{}</user_friendly_name>\\n    </app>\\n' project.xml
+    fi""".format(PROJECT_HOME, app_name, app_name, app_name), check=False)
     
-    # Добавляем assimilator
-    cmd_assimilator = (
-        "cd {projhome} && "
-        "if ! grep -q '{appname}_assimilator' config.xml; then "
-        "sed -i '/<\\/daemons>/i\\        <daemon>\\n            <cmd>script_assimilator --app {appname} --script \"{appname}_assimilator files\"</cmd>\\n        </daemon>' config.xml; "
-        "fi"
-    ).format(projhome=PROJECT_HOME, appname=app_name)
-    run_command(cmd_assimilator, check=False)
+    # Добавляем в БД
+    run_cmd("cd {} && bin/xadd".format(PROJECT_HOME), check=False)
     
-    # Обновляем project.xml
-    cmd = (
-        "cd {projhome} && "
-        "if ! grep -q '<name>{appname}</name>' project.xml; then "
-        "sed -i '/<\\/boinc>/i\\    <app>\\n        <name>{appname}</name>\\n        <user_friendly_name>{appname}</user_friendly_name>\\n    </app>\\n' project.xml; "
-        "fi"
-    ).format(projhome=PROJECT_HOME, appname=app_name)
-    run_command(cmd, check=False)
-    
-    # Добавляем приложение в базу данных через bin/xadd
-    cmd = "cd {} && bin/xadd".format(PROJECT_HOME)
-    if not run_command(cmd, check=False):
-        print("Ошибка при добавлении приложения {} в базу данных через bin/xadd".format(app_name), file=sys.stderr)
-        return False
-    
-    print("Приложение {} создано и настроено".format(app_name))
     return True
+
+
+def setup_daemons():
+    """Настроить и запустить валидаторы и ассимиляторы"""
+    # Символические ссылки для ассимиляторов (script_assimilator использует ../bin/)
+    apps_list = " ".join([app['name'] for app in apps])
+    run_cmd("""cd {} && mkdir -p ../bin && for app in {}; do
+        ln -sf {}/bin/${{app}}_assimilator ../bin/${{app}}_assimilator
+    done""".format(PROJECT_HOME, apps_list, PROJECT_HOME), check=False)
+    
+    # Права доступа на директории результатов
+    results_dirs = " ".join([app['resultsdir'] for app in apps])
+    run_cmd("mkdir -p {} && chown -R boincadm:boincadm /results && chmod -R 755 /results".format(results_dirs), check=False)
+    
+    # Перезапуск демонов
+    run_cmd("cd {} && bin/stop && sleep 2 && bin/start".format(PROJECT_HOME), check=False)
+    
+    # Запуск валидаторов и ассимиляторов
+    for app in apps:
+        app_name = app['name']
+        run_cmd("""cd {} && su boincadm -c 'cd {} && PATH={}/bin:$PATH nohup {}/bin/sample_trivial_validator -app {} > /dev/null 2>&1 &'""".format(
+            PROJECT_HOME, PROJECT_HOME, PROJECT_HOME, PROJECT_HOME, app_name
+        ), check=False)
+        run_cmd("""cd {} && su boincadm -c 'cd {} && PATH={}/bin:$PATH nohup bin/script_assimilator --app {} --script "{}_assimilator files" > /dev/null 2>&1 &'""".format(
+            PROJECT_HOME, PROJECT_HOME, PROJECT_HOME, app_name, app_name
+        ), check=False)
+        print("  ✓ {}: валидатор и ассимилятор запущены".format(app_name))
+    
+    time.sleep(2)
 
 
 def create_apps():
@@ -149,49 +109,25 @@ def create_apps():
     print("=" * 60)
     print("Создание Apps...")
     print("=" * 60)
-
+    
     for app in apps:
         create_app(app['name'], app['resultsdir'])
-
+    
     print("\n" + "=" * 60)
-    print("Примечание: версии будут обновлены позже через create_tasks_bin.py")
-    print("(после добавления бинарников и version.xml)")
+    print("Настройка валидаторов и ассимиляторов...")
     print("=" * 60)
-
-    print("\n" + "=" * 60)
-    print("Перезапускаю демоны BOINC для применения изменений...")
-    print("=" * 60)
-    cmd = "cd {} && bin/stop && sleep 2 && bin/start".format(PROJECT_HOME)
-    run_command(cmd, check=False)
-
-    # Создаем шаблоны результатов для всех приложений
-    print("\n" + "=" * 60)
-    print("Создаю шаблоны результатов...")
-    print("=" * 60)
+    setup_daemons()
+    
+    # Шаблоны результатов
     for app in apps:
-        cmd = (
-            "cd {projhome}/templates && "
-            "if [ ! -f {appname}_out ]; then "
-            "cp boinc2docker_out {appname}_out && "
-            "echo 'Created {appname}_out'; "
-            "fi"
-        ).format(projhome=PROJECT_HOME, appname=app['name'])
-        run_command(cmd, check=False)
-
+        run_cmd("""cd {}/templates && [ ! -f {}_out ] && cp boinc2docker_out {}_out""".format(
+            PROJECT_HOME, app['name'], app['name']
+        ), check=False)
+    
     print("\n" + "=" * 60)
-    print("Все Apps успешно созданы!")
+    print("✓ Все Apps созданы и настроены!")
     print("=" * 60)
-    print("\n✓ Приложения созданы")
-    print("✓ Структура директорий создана")
-    print("✓ Шаблоны результатов созданы")
-    print("✓ Демоны BOINC перезапущены")
-    print("\nПримечание: версии будут добавлены в базу данных")
-    print("после запуска create_tasks_bin.py (который добавит бинарники и version.xml).")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--help":
-        print(__doc__)
-        sys.exit(0)
-
     create_apps()

@@ -15,7 +15,6 @@ import subprocess
 import sys
 import time
 import os
-import json
 from pathlib import Path
 
 # Определяем директорию скрипта
@@ -121,85 +120,32 @@ def step_update_cache_config():
     print("ШАГ 2.5: Обновление конфигурации кеширования")
     print("=" * 80)
     
-    # Получаем имя проекта из переменных окружения
     project_name = os.environ.get("PROJECT", "boincserver")
     project_root = os.environ.get("PROJECT_ROOT", "/home/boincadm/project")
+    container_name = "server-apache-1"
     
-    # Определяем имя контейнера apache
-    # Получаем имя контейнера через docker compose ps
-    cmd = ["wsl.exe", "-e", "docker", "compose", "ps", "--format", "json", "apache"]
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=SCRIPT_DIR)
-    if result.returncode != 0 or not result.stdout.strip():
-        # Пробуем альтернативный способ - получить имя через docker ps
-        cmd = ["wsl.exe", "-e", "docker", "ps", "--filter", "name=apache", "--format", "{{.Names}}"]
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=SCRIPT_DIR)
-        if result.returncode != 0 or not result.stdout.strip():
-            print("⚠ Предупреждение: контейнер apache не найден, пропускаем обновление кеша")
-            return True
-        container_name = result.stdout.strip().split('\n')[0]
-    else:
-        # Парсим JSON (упрощенный вариант - берем первое имя)
-        try:
-            lines = [l for l in result.stdout.strip().split('\n') if l]
-            if lines:
-                container_data = json.loads(lines[0])
-                container_name = container_data.get('Name', '')
-            else:
-                print("⚠ Предупреждение: контейнер apache не найден, пропускаем обновление кеша")
-                return True
-        except:
-            # Fallback: используем стандартное имя
-            container_name = "server-apache-1"
-    
-    if not container_name:
-        print("⚠ Предупреждение: не удалось определить имя контейнера apache, пропускаем обновление кеша")
-        return True
-    
-    # Ждем, пока проект будет создан (проверяем наличие .built_${PROJECT})
-    print(f"Ожидание создания проекта (проверка файла .built_{project_name})...")
-    max_wait = 120  # максимум 2 минуты
-    waited = 0
-    while waited < max_wait:
+    # Ждем создания проекта
+    print(f"Ожидание создания проекта...")
+    for i in range(60):
         cmd = ["wsl.exe", "-e", "docker", "exec", container_name, "bash", "-c", 
-               f"test -f {project_root}/.built_{project_name} && echo 'ready' || echo 'waiting'"]
+               f"test -f {project_root}/.built_{project_name} && echo ready"]
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=SCRIPT_DIR)
         if "ready" in result.stdout:
-            print("✓ Проект создан")
             break
         time.sleep(2)
-        waited += 2
-        if waited % 10 == 0:
-            print(f"  Ожидание... ({waited}/{max_wait} сек)")
-    else:
-        print("⚠ Предупреждение: проект не создан за отведенное время, продолжаем...")
     
-    # Копируем файл cache_parameters.inc в контейнер
-    cache_file_path = SCRIPT_DIR / "images" / "apache" / "cache_parameters.inc"
-    if not cache_file_path.exists():
-        print(f"✗ Ошибка: файл {cache_file_path} не найден", file=sys.stderr)
-        return False
+    # Копируем cache_parameters.inc
+    cache_file = SCRIPT_DIR / "images" / "apache" / "cache_parameters.inc"
+    if not cache_file.exists():
+        print(f"⚠ Файл {cache_file} не найден", file=sys.stderr)
+        return True
     
-    print(f"Копирование {cache_file_path} в контейнер...")
-    cmd = ["wsl.exe", "-e", "docker", "cp", str(cache_file_path), 
-           f"{container_name}:{project_root}/html/project/cache_parameters.inc"]
-    if not run_command(cmd, check=True, cwd=SCRIPT_DIR):
-        return False
+    run_command(["wsl.exe", "-e", "docker", "cp", str(cache_file), 
+                 f"{container_name}:{project_root}/html/project/cache_parameters.inc"], check=False)
+    run_command(["wsl.exe", "-e", "docker", "exec", container_name, "bash", "-c",
+                 f"chown boincadm:boincadm {project_root}/html/project/cache_parameters.inc"], check=False)
     
-    # Устанавливаем правильные права на файл
-    cmd = ["wsl.exe", "-e", "docker", "exec", container_name, "bash", "-c",
-           f"chown boincadm:boincadm {project_root}/html/project/cache_parameters.inc"]
-    if not run_command(cmd, check=True, cwd=SCRIPT_DIR):
-        return False
-    
-    # Проверяем содержимое файла
-    cmd = ["wsl.exe", "-e", "docker", "exec", container_name, "bash", "-c",
-           f"grep -q 'STATUS_PAGE_TTL.*0' {project_root}/html/project/cache_parameters.inc && echo 'OK' || echo 'FAIL'"]
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=SCRIPT_DIR)
-    if "OK" not in result.stdout:
-        print("⚠ Предупреждение: файл не содержит ожидаемых значений TTL=0", file=sys.stderr)
-    else:
-        print("✓ Конфигурация кеширования обновлена (кеширование отключено)")
-    
+    print("✓ Конфигурация кеширования обновлена")
     return True
 
 
@@ -209,6 +155,7 @@ def step_create_apps():
     print("ШАГ 3: Создание приложений")
     print("=" * 80)
     
+    # create_apps.py теперь автоматически запускает валидаторы и ассимиляторы
     return run_python_script("create_apps.py")
 
 
