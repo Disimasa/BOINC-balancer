@@ -1,4 +1,0 @@
-Long task completed
-Execution time: 2.966 seconds
-Result: 2551118.458160
-Iterations: 25000000
