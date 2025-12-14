@@ -43,6 +43,46 @@ def md5_hash(text):
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 
+def _set_max_jobs_for_user(email):
+    """Установить max_jobs_in_progress = 1 для пользователя через SQL"""
+    import subprocess
+    
+    # Экранируем email для безопасности (хотя он уже проверен в create_user)
+    email_escaped = email.replace("'", "''")
+    
+    # SQL запрос для установки max_jobs_in_progress = 1
+    sql = f"""
+    UPDATE user
+    SET project_prefs = CASE
+        WHEN project_prefs IS NULL OR project_prefs = '' THEN
+            '<max_jobs_in_progress>1</max_jobs_in_progress>'
+        WHEN project_prefs NOT LIKE '%<max_jobs_in_progress>%' THEN
+            CONCAT(project_prefs, '<max_jobs_in_progress>1</max_jobs_in_progress>')
+        ELSE
+            REGEXP_REPLACE(project_prefs, '<max_jobs_in_progress>[0-9]+</max_jobs_in_progress>', '<max_jobs_in_progress>1</max_jobs_in_progress>')
+    END
+    WHERE email_addr = '{email_escaped}';
+    """
+    
+    # Выполняем через stdin
+    full_cmd = [
+        "wsl.exe", "-e", "docker", "exec", "-i", "server-apache-1",
+        "bash", "-c", "cd /home/boincadm/project && mysql -u root -ppassword boincserver"
+    ]
+    
+    try:
+        proc = subprocess.Popen(
+            full_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        proc.communicate(input=sql.encode('utf-8'))
+        # Не выводим ошибки, так как это не критично
+    except Exception:
+        pass  # Игнорируем ошибки
+
+
 def create_user(email, password, user_name, project_url):
     """
     Создает пользователя в BOINC проекте через API
@@ -126,6 +166,8 @@ def create_user(email, password, user_name, project_url):
             if account_key:
                 account_key = account_key.strip()
                 if account_key:
+                    # Устанавливаем max_jobs_in_progress = 1 для только что созданного пользователя
+                    _set_max_jobs_for_user(email.lower())
                     return True, account_key, "Пользователь успешно создан"
         
         return False, None, f"Не удалось получить account key из ответа. XML: {response_text[:500]}"

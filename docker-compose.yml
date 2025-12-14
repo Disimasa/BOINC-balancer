@@ -3,26 +3,6 @@ volumes:
   project:
   results:
   secrets:
-  boinc-client-1-data:
-  boinc-client-2-data:
-  boinc-client-3-data:
-  boinc-client-4-data:
-  boinc-client-5-data:
-  boinc-client-6-data:
-  boinc-client-7-data:
-  boinc-client-8-data:
-  boinc-client-9-data:
-  boinc-client-10-data:
-  boinc-client-11-data:
-  boinc-client-12-data:
-  boinc-client-13-data:
-  boinc-client-14-data:
-  boinc-client-15-data:
-  boinc-client-16-data:
-  boinc-client-17-data:
-  boinc-client-18-data:
-  boinc-client-19-data:
-  boinc-client-20-data:
 
 networks:
   default:
@@ -95,152 +75,112 @@ services:
       resources:
         limits:
           memory: 1G
-          cpus: '0.8'
+          cpus: '0.5'
         reservations:
           memory: 512M
-          cpus: '0.4'
+          cpus: '0.2'
     environment:
       BOINC_PROJECT_URL: 'http://172.26.176.1/boincserver'
       BOINC_GUI_RPC_PASSWORD: "password"
-      BOINC_CMD_LINE_OPTIONS: "--allow_remote_gui_rpc"
+      BOINC_CMD_LINE_OPTIONS: "--allow_remote_gui_rpc --allow_multiple_clients"
       BOINC_ACCOUNT_KEY: ${BOINC_ACCOUNT_KEY:-}
 
   boinc-client-1:
     <<: *boinc-client-template
     container_name: boinc-client-1
     hostname: boinc-client-1
-    volumes:
-      - boinc-client-1-data:/var/lib/boinc
 
   boinc-client-2:
     <<: *boinc-client-template
     container_name: boinc-client-2
     hostname: boinc-client-2
-    volumes:
-      - boinc-client-2-data:/var/lib/boinc
 
   boinc-client-3:
     <<: *boinc-client-template
     container_name: boinc-client-3
     hostname: boinc-client-3
-    volumes:
-      - boinc-client-3-data:/var/lib/boinc
 
   boinc-client-4:
     <<: *boinc-client-template
     container_name: boinc-client-4
     hostname: boinc-client-4
-    volumes:
-      - boinc-client-4-data:/var/lib/boinc
 
   boinc-client-5:
     <<: *boinc-client-template
     container_name: boinc-client-5
     hostname: boinc-client-5
-    volumes:
-      - boinc-client-5-data:/var/lib/boinc
 
   boinc-client-6:
     <<: *boinc-client-template
     container_name: boinc-client-6
     hostname: boinc-client-6
-    volumes:
-      - boinc-client-6-data:/var/lib/boinc
 
   boinc-client-7:
     <<: *boinc-client-template
     container_name: boinc-client-7
     hostname: boinc-client-7
-    volumes:
-      - boinc-client-7-data:/var/lib/boinc
 
   boinc-client-8:
     <<: *boinc-client-template
     container_name: boinc-client-8
     hostname: boinc-client-8
-    volumes:
-      - boinc-client-8-data:/var/lib/boinc
 
   boinc-client-9:
     <<: *boinc-client-template
     container_name: boinc-client-9
     hostname: boinc-client-9
-    volumes:
-      - boinc-client-9-data:/var/lib/boinc
 
   boinc-client-10:
     <<: *boinc-client-template
     container_name: boinc-client-10
     hostname: boinc-client-10
-    volumes:
-      - boinc-client-10-data:/var/lib/boinc
 
   boinc-client-11:
     <<: *boinc-client-template
     container_name: boinc-client-11
     hostname: boinc-client-11
-    volumes:
-      - boinc-client-11-data:/var/lib/boinc
 
   boinc-client-12:
     <<: *boinc-client-template
     container_name: boinc-client-12
     hostname: boinc-client-12
-    volumes:
-      - boinc-client-12-data:/var/lib/boinc
 
   boinc-client-13:
     <<: *boinc-client-template
     container_name: boinc-client-13
     hostname: boinc-client-13
-    volumes:
-      - boinc-client-13-data:/var/lib/boinc
 
   boinc-client-14:
     <<: *boinc-client-template
     container_name: boinc-client-14
     hostname: boinc-client-14
-    volumes:
-      - boinc-client-14-data:/var/lib/boinc
 
   boinc-client-15:
     <<: *boinc-client-template
     container_name: boinc-client-15
     hostname: boinc-client-15
-    volumes:
-      - boinc-client-15-data:/var/lib/boinc
 
   boinc-client-16:
     <<: *boinc-client-template
     container_name: boinc-client-16
     hostname: boinc-client-16
-    volumes:
-      - boinc-client-16-data:/var/lib/boinc
 
   boinc-client-17:
     <<: *boinc-client-template
     container_name: boinc-client-17
     hostname: boinc-client-17
-    volumes:
-      - boinc-client-17-data:/var/lib/boinc
 
   boinc-client-18:
     <<: *boinc-client-template
     container_name: boinc-client-18
     hostname: boinc-client-18
-    volumes:
-      - boinc-client-18-data:/var/lib/boinc
 
   boinc-client-19:
     <<: *boinc-client-template
     container_name: boinc-client-19
     hostname: boinc-client-19
-    volumes:
-      - boinc-client-19-data:/var/lib/boinc
 
   boinc-client-20:
     <<: *boinc-client-template
     container_name: boinc-client-20
     hostname: boinc-client-20
-    volumes:
-      - boinc-client-20-data:/var/lib/boinc

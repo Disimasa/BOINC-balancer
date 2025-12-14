@@ -50,13 +50,20 @@ def create_app(app_name, resultsdir, weight=1.0):
     # Структура директорий
     run_cmd("cd {} && mkdir -p apps/{}/1.0/x86_64-pc-linux-gnu".format(PROJECT_HOME, app_name), check=False)
     
-    # Assimilator скрипт
+    # Assimilator скрипт (оптимизирован для снижения I/O нагрузки)
+    # Использует перемещение (mv) вместо копирования для уменьшения операций записи
+    # И добавляет небольшую задержку для батчинга операций
     run_cmd("""cd {} && cat > bin/{}_assimilator << 'EOF'
 #!/bin/bash
 RESULTS_DIR={}
 mkdir -p "$RESULTS_DIR"
+# Используем перемещение вместо копирования для уменьшения I/O операций
+# Файлы уже обработаны валидатором, оригиналы больше не нужны
 for file in "$@"; do
-    [ -f "$file" ] && cp "$file" "$RESULTS_DIR/"
+    if [ -f "$file" ]; then
+        # Используем mv вместо cp - это одна операция вместо двух (чтение + запись)
+        mv "$file" "$RESULTS_DIR/" 2>/dev/null || cp "$file" "$RESULTS_DIR/"
+    fi
 done
 EOF
 chmod +x bin/{}_assimilator && chown boincadm:boincadm bin/{}_assimilator""".format(
@@ -68,9 +75,15 @@ chmod +x bin/{}_assimilator && chown boincadm:boincadm bin/{}_assimilator""".for
         sed -i '/<\\/daemons>/i\\        <daemon>\\n            <cmd>sample_trivial_validator -app {}</cmd>\\n        </daemon>' config.xml
     fi""".format(PROJECT_HOME, app_name, app_name), check=False)
     
+    # Настраиваем ассимилятор с увеличенным интервалом для снижения I/O нагрузки
+    # --sleep_interval 30: проверяет новые результаты каждые 30 секунд вместо 10
+    # Это позволяет батчить операции записи и снизить нагрузку на диск
     run_cmd("""cd {} && if ! grep -q '{}_assimilator' config.xml; then
-        sed -i '/<\\/daemons>/i\\        <daemon>\\n            <cmd>script_assimilator --app {} --script "{}_assimilator files"</cmd>\\n        </daemon>' config.xml
-    fi""".format(PROJECT_HOME, app_name, app_name, app_name), check=False)
+        sed -i '/<\\/daemons>/i\\        <daemon>\\n            <cmd>script_assimilator --app {} --script "{}_assimilator files" --sleep_interval 30</cmd>\\n        </daemon>' config.xml
+    else
+        # Обновляем существующий ассимилятор, добавляя sleep_interval если его нет
+        sed -i 's|script_assimilator --app {} --script "{}_assimilator files"|script_assimilator --app {} --script "{}_assimilator files" --sleep_interval 30|g' config.xml
+    fi""".format(PROJECT_HOME, app_name, app_name, app_name, app_name, app_name, app_name, app_name), check=False)
     
     # Добавляем в project.xml
     run_cmd("""cd {} && if ! grep -q '<name>{}</name>' project.xml; then
@@ -102,12 +115,77 @@ def setup_daemons():
     results_dirs = " ".join([app['resultsdir'] for app in apps])
     run_cmd("mkdir -p {} && chown -R boincadm:boincadm /results && chmod -R 755 /results".format(results_dirs), check=False)
     
-    # Добавляем флаги --allapps и --random_order_db к feeder для перемешивания задач
+    # Добавляем флаги к feeder для перемешивания задач
     # --allapps: перемешивает задачи по приложениям пропорционально весам
     # --random_order_db: выбирает задачи в случайном порядке из БД
+    # --by_batch: перемешивает задачи по батчам для более равномерного распределения
     # Обновляем команду feeder независимо от того, есть ли уже флаги
-    run_cmd("""cd {} && sed -i 's|<cmd>feeder -d 3[^<]*</cmd>|<cmd>feeder -d 3 --allapps --random_order_db</cmd>|g' config.xml""".format(PROJECT_HOME), check=False)
-    print("  ✓ Feeder настроен с флагами --allapps --random_order_db")
+    run_cmd("""cd {} && sed -i 's|<cmd>feeder -d 3[^<]*</cmd>|<cmd>feeder -d 3 --allapps --random_order_db --by_batch</cmd>|g' config.xml""".format(PROJECT_HOME), check=False)
+    print("  ✓ Feeder настроен с флагами --allapps --random_order_db --by_batch")
+    
+    # Устанавливаем max_wus_to_send = 1, max_wus_in_progress = 1 и max_ncpus = 1, чтобы за раз отправлялась только одна задача
+    # max_wus_to_send = 1: базовое количество задач на CPU
+    # max_wus_in_progress = 1: максимальное количество задач в процессе выполнения на хосте
+    # max_ncpus = 1: ограничиваем количество CPU до 1 для расчета (чтобы mult = 1)
+    # Результат: max_jobs_per_rpc = 1 * 1 = 1 задача за раз
+    run_cmd("""cd {} && if ! grep -q '<max_wus_to_send>' config.xml; then
+        sed -i '/<\\/boinc>/i\\    <max_wus_to_send>1</max_wus_to_send>' config.xml
+    else
+        sed -i 's|<max_wus_to_send>[0-9]*</max_wus_to_send>|<max_wus_to_send>1</max_wus_to_send>|g' config.xml
+    fi""".format(PROJECT_HOME), check=False)
+    run_cmd("""cd {} && if ! grep -q '<max_wus_in_progress>' config.xml; then
+        sed -i '/<\\/boinc>/i\\    <max_wus_in_progress>1</max_wus_in_progress>' config.xml
+    else
+        sed -i 's|<max_wus_in_progress>[0-9]*</max_wus_in_progress>|<max_wus_in_progress>1</max_wus_in_progress>|g' config.xml
+    fi""".format(PROJECT_HOME), check=False)
+    run_cmd("""cd {} && if ! grep -q '<max_ncpus>' config.xml; then
+        sed -i '/<\\/boinc>/i\\    <max_ncpus>1</max_ncpus>' config.xml
+    else
+        sed -i 's|<max_ncpus>[0-9]*</max_ncpus>|<max_ncpus>1</max_ncpus>|g' config.xml
+    fi""".format(PROJECT_HOME), check=False)
+    print("  ✓ Установлено max_wus_to_send = 1, max_wus_in_progress = 1 и max_ncpus = 1 (одна задача за раз независимо от CPU)")
+    
+    # Устанавливаем min_sendwork_interval = 2 (минимальный интервал между отправками работы клиенту в секундах)
+    run_cmd("""cd {} && if ! grep -q '<min_sendwork_interval>' config.xml; then
+        sed -i '/<\\/boinc>/i\\    <min_sendwork_interval>2</min_sendwork_interval>' config.xml
+    else
+        sed -i 's|<min_sendwork_interval>[0-9]*</min_sendwork_interval>|<min_sendwork_interval>2</min_sendwork_interval>|g' config.xml
+    fi""".format(PROJECT_HOME), check=False)
+    print("  ✓ Установлено min_sendwork_interval = 2 (минимальный интервал между отправками работы)")
+    
+    # Включаем enable_assignment для поддержки --target_host
+    run_cmd("""cd {} && if ! grep -q '<enable_assignment>' config.xml; then
+        sed -i '/<\\/boinc>/i\\    <enable_assignment/>' config.xml
+    fi""".format(PROJECT_HOME), check=False)
+    print("  ✓ Включено enable_assignment для поддержки назначения задач хостам")
+    
+    # Включаем debug_assignment и debug_send для отладки назначенных задач
+    run_cmd("""cd {} && if ! grep -q '<debug_assignment>' config.xml; then
+        sed -i '/<\\/boinc>/i\\    <debug_assignment/>' config.xml
+    fi""".format(PROJECT_HOME), check=False)
+    print("  ✓ Включено debug_assignment для отладки назначенных задач")
+    
+    run_cmd("""cd {} && if ! grep -q '<debug_send>' config.xml; then
+        sed -i '/<\\/boinc>/i\\    <debug_send/>' config.xml
+    fi""".format(PROJECT_HOME), check=False)
+    print("  ✓ Включено debug_send для отладки отправки задач")
+    
+    # Устанавливаем max_jobs_in_progress = 1 в project_prefs для всех клиентов
+    # Это ограничивает количество задач, которые клиент может выполнять одновременно
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    set_max_jobs_script = os.path.join(script_dir, "set_client_max_jobs.py")
+    if os.path.exists(set_max_jobs_script):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, set_max_jobs_script],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        if result.returncode == 0:
+            print("  ✓ Установлено max_jobs_in_progress = 1 в project_prefs для всех клиентов")
+        else:
+            print(f"  ⚠ Предупреждение: не удалось установить max_jobs_in_progress: {result.stderr[:200]}", file=sys.stderr)
     
     # Перезапуск демонов (чтобы применить изменения в config.xml)
     run_cmd("cd {} && bin/stop && sleep 2 && bin/start".format(PROJECT_HOME), check=False)

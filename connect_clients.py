@@ -34,6 +34,47 @@ DEFAULT_EMAIL = env_vars.get('BOINC_USER_EMAIL', 'test@test.com')
 DEFAULT_PASSWORD = env_vars.get('BOINC_USER_PASSWORD', 'testpass')
 ACCOUNT_KEY = env_vars.get('BOINC_ACCOUNT_KEY', '')
 
+def copy_app_config(client_num):
+    """Скопировать app_config.xml в нужную папку проекта и обновить конфигурацию"""
+    client_name = f"boinc-client-{client_num}"
+    project_dir = "/var/lib/boinc/projects/172.26.176.1_boincserver"
+    config_file = f"{project_dir}/app_config.xml"
+    
+    try:
+        # Копируем файл
+        result = subprocess.run(
+            [
+                "wsl.exe", "-e", "docker", "exec", client_name,
+                "sh", "-c",
+                f"mkdir -p {project_dir} && "
+                f"([ -d {config_file} ] && rm -rf {config_file} || true) && "
+                f"([ -f {config_file} ] && rm -f {config_file} || true) && "
+                f"cp /var/lib/boinc/app_config.xml {config_file} && "
+                f"chmod 644 {config_file}"
+            ],
+            capture_output=True,
+            timeout=5
+        )
+        
+        if result.returncode != 0:
+            return False
+        
+        # Обновляем конфигурацию через boinccmd
+        time.sleep(0.5)
+        result2 = subprocess.run(
+            [
+                "wsl.exe", "-e", "docker", "exec", client_name,
+                "sh", "-c",
+                f"boinccmd --read_cc_config"
+            ],
+            capture_output=True,
+            timeout=5
+        )
+        
+        return result2.returncode == 0
+    except:
+        return False
+
 def connect_client(client_num, account_key=None):
     """Подключить клиент к проекту"""
     client_name = f"boinc-client-{client_num}"
@@ -54,13 +95,17 @@ def connect_client(client_num, account_key=None):
                 "wsl.exe", "-e", "docker", "exec", client_name,
                 "sh", "-c",
                 f"PASSWD=$(cat /var/lib/boinc/gui_rpc_auth.cfg 2>/dev/null || echo ''); "
-                f"boinccmd --passwd \"$PASSWD\" --project_attach {client_project_url} '{account_key}'"
+                f"boinccmd --project_attach {client_project_url} '{account_key}'"
             ],
             capture_output=True,
             timeout=10
         )
         
         if result.returncode == 0:
+            # Ждем немного, чтобы папка проекта успела создаться
+            time.sleep(1)
+            # Копируем app_config.xml в папку проекта после успешного подключения
+            copy_app_config(client_num)
             return True, None
         else:
             error_msg = result.stderr.decode('utf-8', errors='ignore')
@@ -124,6 +169,7 @@ def main():
         else:
             if "already attached" in (error or "").lower() or "already" in (error or "").lower():
                 print("✓ Уже подключен")
+                copy_app_config(i)
                 success_count += 1
             else:
                 print(f"✗ Ошибка: {error or 'Неизвестная ошибка'}")
@@ -134,6 +180,27 @@ def main():
     print(f"\n=== Результаты ===")
     print(f"Успешно подключено: {success_count}")
     print(f"Ошибок: {failed_count}\n")
+    
+    # Устанавливаем max_jobs_in_progress = 1 для всех пользователей (включая только что созданных)
+    if success_count > 0:
+        print("Установка max_jobs_in_progress = 1 для всех пользователей...")
+        script_dir = Path(__file__).parent
+        set_max_jobs_script = script_dir / "set_client_max_jobs.py"
+        if set_max_jobs_script.exists():
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(set_max_jobs_script)],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                if result.returncode == 0:
+                    print("  ✓ Установлено max_jobs_in_progress = 1 для всех пользователей")
+                else:
+                    print(f"  ⚠ Предупреждение: не удалось установить max_jobs_in_progress: {result.stderr[:200]}")
+            except Exception as e:
+                print(f"  ⚠ Предупреждение: ошибка при установке max_jobs_in_progress: {e}")
+        print()
     
     print("Проверка статуса клиентов (первые 5):")
     for i in range(1, min(6, args.count + 1)):

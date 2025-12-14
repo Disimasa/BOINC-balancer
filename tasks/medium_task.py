@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
 """
-Средняя задача - точное время выполнения: 3 секунды
+Средняя задача - время выполнения: 10 секунд
 """
 import time
 import sys
 import os
 
 def medium_computation():
-    """Средняя задача с точным временем выполнения: ~3 секунды"""
+    """Средняя задача с временем выполнения: 10 секунд"""
     start = time.time()
     
-    # Вычисления для нагружения CPU (~3 секунды)
-    # Вычисление факториала и суммы
-    result = 0
-    iterations = 60000000  # Примерно 3 секунды на среднем CPU
-    for i in range(1, iterations + 1):
-        result += i * (i + 1) * (i + 2)
+    # Простой sleep на 10 секунд
+    time.sleep(10)
     
     elapsed = time.time() - start
     
@@ -23,12 +19,9 @@ def medium_computation():
     print("Time: {:.3f} seconds".format(elapsed))
     
     # Сохранить результат
-    # BOINC ожидает файл с логическим именем (open_name) в текущей директории
     with open('result.txt', 'w') as f:
         f.write("Medium task completed\n")
         f.write("Execution time: {:.3f} seconds\n".format(elapsed))
-        f.write("Iterations: {}\n".format(iterations))
-        f.write("Result: {}\n".format(result % 1000000))  # Последние 6 цифр для проверки
         f.flush()
         os.fsync(f.fileno())
     
@@ -40,5 +33,3 @@ def medium_computation():
 
 if __name__ == "__main__":
     medium_computation()
-
-

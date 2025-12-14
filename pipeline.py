@@ -36,7 +36,6 @@ def run_command(cmd, check=True, cwd=None, shell=False):
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                universal_newlines=True,
                 bufsize=1,
                 cwd=cwd
             )
@@ -45,13 +44,25 @@ def run_command(cmd, check=True, cwd=None, shell=False):
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                universal_newlines=True,
                 bufsize=1,
                 cwd=cwd
             )
         
-        # Выводим логи в реальном времени
-        for line in proc.stdout:
+        # Выводим логи в реальном времени с правильной обработкой кодировки
+        for line_bytes in proc.stdout:
+            try:
+                # Пытаемся декодировать как UTF-8
+                line = line_bytes.decode('utf-8', errors='replace')
+            except (UnicodeDecodeError, AttributeError):
+                # Если не получилось, пробуем latin-1
+                try:
+                    if isinstance(line_bytes, bytes):
+                        line = line_bytes.decode('latin-1', errors='replace')
+                    else:
+                        line = str(line_bytes)
+                except Exception:
+                    # В крайнем случае просто преобразуем в строку
+                    line = str(line_bytes)
             print(line, end='', flush=True)
         
         proc.wait()
@@ -214,7 +225,7 @@ def step_connect_clients():
     return run_python_script("connect_clients.py", "--count", "20")
 
 
-def step_create_tasks():
+def step_create_tasks(balance_hosts=False):
     """Шаг 6: Создание задач (нативные бинарные задачи)"""
     print("\n" + "=" * 80)
     print("ШАГ 6: Создание задач")
@@ -225,7 +236,10 @@ def step_create_tasks():
     time.sleep(5)
     
     # Создаем задачи
-    if not run_python_script("create_tasks_bin.py"):
+    args = []
+    if balance_hosts:
+        args.append("--balance-hosts")
+    if not run_python_script("create_tasks_bin.py", *args):
         return False
     
     # Принудительно обновляем клиентов, чтобы они запросили задачи
@@ -237,6 +251,13 @@ def step_create_tasks():
 
 def main():
     """Главная функция pipeline"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="BOINC Project Setup Pipeline")
+    parser.add_argument("--balance-hosts", action="store_true", 
+                       help="Балансировать задачи между хостами при создании")
+    args = parser.parse_args()
+    
     print("\n" + "=" * 80)
     print("BOINC PROJECT SETUP PIPELINE")
     print("=" * 80)
@@ -250,7 +271,7 @@ def main():
         ("Запуск валидаторов и ассимиляторов", step_start_daemons),  # Валидаторы и ассимиляторы запускаются после создания приложений
         ("Создание пользователя", step_create_user),
         ("Подключение клиентов", step_connect_clients),  # Клиенты подключаются ПОСЛЕ создания приложений
-        ("Создание задач", step_create_tasks),
+        ("Создание задач", lambda: step_create_tasks(balance_hosts=args.balance_hosts)),
     ]
     
     for step_name, step_func in steps:

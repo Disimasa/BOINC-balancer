@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
 """
-Быстрая задача - точное время выполнения: 1 секунда
+Быстрая задача - время выполнения: 1 секунда
 """
 import time
 import sys
 import os
 
 def fast_computation():
-    """Быстрая задача с точным временем выполнения: ~1 секунда"""
+    """Быстрая задача с временем выполнения: 1 секунда"""
     start = time.time()
     
-    # Вычисления для нагружения CPU (~1 секунда)
-    # Вычисление суммы квадратов чисел
-    result = 0
-    iterations = 20000000  # Примерно 1 секунда на среднем CPU
-    for i in range(iterations):
-        result += i * i
+    # Простой sleep на 1 секунду
+    time.sleep(1)
     
     elapsed = time.time() - start
     
@@ -23,7 +19,6 @@ def fast_computation():
     print("Time: {:.3f} seconds".format(elapsed))
     
     # Сохранить результат
-    # BOINC ожидает файл с логическим именем (open_name) в текущей директории
     cwd = os.getcwd()
     output_file = 'result.txt'
     output_path = os.path.join(cwd, output_file)
@@ -34,8 +29,6 @@ def fast_computation():
     with open(output_file, 'w') as f:
         f.write("Fast task completed\n")
         f.write("Execution time: {:.3f} seconds\n".format(elapsed))
-        f.write("Iterations: {}\n".format(iterations))
-        f.write("Result: {}\n".format(result % 1000000))  # Последние 6 цифр для проверки
         f.flush()
         os.fsync(f.fileno())
     
@@ -57,5 +50,3 @@ def fast_computation():
 
 if __name__ == "__main__":
     fast_computation()
-
-
