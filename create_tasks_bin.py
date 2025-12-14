@@ -33,14 +33,14 @@ APP_CONFIGS = {
         "target_nresults": 1,
         "version_num": "100"
     },
-    "long_task": {
-        "script": "tasks/long_task.py",
+    "random_task": {
+        "script": "tasks/random_task.py",
         "default_count": 1000,
         "target_nresults": 1,
         "version_num": "100"
     },
-    "random_task": {
-        "script": "tasks/random_task.py",
+    "long_task": {
+        "script": "tasks/long_task.py",
         "default_count": 1000,
         "target_nresults": 1,
         "version_num": "100"

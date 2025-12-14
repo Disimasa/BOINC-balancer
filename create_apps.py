@@ -17,8 +17,8 @@ CONTAINER_NAME = "server-apache-1"
 apps = [
     {"name": "fast_task", "resultsdir": "/results/fast_task", "weight": 1.0},
     {"name": "medium_task", "resultsdir": "/results/medium_task", "weight": 1.0},
-    {"name": "long_task", "resultsdir": "/results/long_task", "weight": 1.0},
-    {"name": "random_task", "resultsdir": "/results/random_task", "weight": 1.0}
+    {"name": "random_task", "resultsdir": "/results/random_task", "weight": 1.0},
+    {"name": "long_task", "resultsdir": "/results/long_task", "weight": 1.0}
 ]
 
 

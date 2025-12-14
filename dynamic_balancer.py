@@ -18,15 +18,15 @@ PROJECT_HOME = "/home/boincadm/project"
 CONTAINER_NAME = "server-apache-1"
 
 # Минимальный и максимальный вес приложения
-MIN_WEIGHT = 0.001
-MAX_WEIGHT = 1000.0
+MIN_WEIGHT = 0.00001
+MAX_WEIGHT = 100000.0
 
 # Коэффициент сглаживания (0.0 - резкие изменения, 1.0 - без изменений)
 # Рекомендуется 0.3-0.5 для плавных изменений
 DEFAULT_SMOOTHING = 0
 
 
-def run_command(cmd, check=True, capture_output=False):
+def run_command(cmd, check=True, capture_output=False, silent=False):
     """Выполнить команду в контейнере apache и вывести stdout/stderr."""
     env_cmd = "export BOINC_PROJECT_DIR={proj} && cd {proj} && {cmd}".format(
         proj=PROJECT_HOME, cmd=cmd
@@ -35,7 +35,7 @@ def run_command(cmd, check=True, capture_output=False):
         "wsl.exe", "-e", "docker", "exec", CONTAINER_NAME,
         "bash", "-lc", env_cmd
     ]
-    if not capture_output:
+    if not capture_output and not silent:
         print("Выполняю: {}".format(cmd))
     try:
         proc = subprocess.Popen(
@@ -102,12 +102,27 @@ def get_current_weights():
 
 
 def get_credit_statistics():
-    """Получить статистику по кредитам для каждого приложения."""
+    """
+    Получить статистику по кредитам для каждого приложения.
+    
+    Возвращает сырые данные без расчетов:
+    - Завершенные кредиты и количество завершенных задач
+    - Средний кредит завершенных задач
+    - Количество задач в процессе выполнения
+    - Количество задач в очереди на отправку
+    """
     query = """
     SELECT 
         a.name as app_name,
-        COALESCE(SUM(CASE WHEN r.server_state = 5 AND r.outcome = 1 THEN r.granted_credit ELSE 0 END), 0) as total_credit,
-        COUNT(DISTINCT CASE WHEN r.server_state = 5 AND r.outcome = 1 THEN r.id END) as completed_count
+        -- Завершенные кредиты
+        COALESCE(SUM(CASE WHEN r.server_state = 5 AND r.outcome = 1 THEN r.granted_credit ELSE 0 END), 0) as completed_credit,
+        COUNT(DISTINCT CASE WHEN r.server_state = 5 AND r.outcome = 1 THEN r.id END) as completed_count,
+        -- Средний кредит завершенных задач (для оценки ожидаемых кредитов)
+        COALESCE(AVG(CASE WHEN r.server_state = 5 AND r.outcome = 1 AND r.granted_credit > 0 THEN r.granted_credit END), 0) as avg_credit,
+        -- Количество отправленных задач (в процессе выполнения)
+        COUNT(DISTINCT CASE WHEN r.server_state = 4 THEN r.id END) as in_progress_count,
+        -- Количество задач в очереди на отправку
+        COUNT(DISTINCT CASE WHEN r.server_state = 2 THEN r.id END) as unsent_count
     FROM app a
     LEFT JOIN workunit w ON a.id = w.appid
     LEFT JOIN result r ON w.id = r.workunitid
@@ -128,19 +143,83 @@ def get_credit_statistics():
         if not line.strip():
             continue
         parts = line.split('\t')
-        if len(parts) >= 3:
+        if len(parts) >= 6:
             app_name = parts[0].strip()
             try:
-                total_credit = float(parts[1].strip())
+                completed_credit = float(parts[1].strip())
                 completed_count = int(parts[2].strip())
+                avg_credit = float(parts[3].strip())
+                in_progress_count = int(parts[4].strip())
+                unsent_count = int(parts[5].strip())
+                
+                # Если нет среднего кредита, но есть завершенные задачи, вычисляем среднее
+                if avg_credit == 0 and completed_count > 0 and completed_credit > 0:
+                    avg_credit = completed_credit / completed_count
+                
                 stats[app_name] = {
-                    'total_credit': total_credit,
-                    'completed_count': completed_count
+                    'completed_credit': completed_credit,
+                    'completed_count': completed_count,
+                    'avg_credit': avg_credit,
+                    'in_progress_count': in_progress_count,
+                    'unsent_count': unsent_count
                 }
-            except (ValueError, IndexError):
+            except (ValueError, IndexError) as e:
                 continue
     
     return stats
+
+
+def calculate_total_credits(credit_stats):
+    """
+    Вычислить итоговые кредиты для каждого приложения (завершенные + ожидаемые).
+    
+    Args:
+        credit_stats: словарь {app_name: {
+            'completed_credit': float,
+            'completed_count': int,
+            'avg_credit': float,
+            'in_progress_count': int,
+            'unsent_count': int
+        }}
+    
+    Returns:
+        словарь {app_name: float} - итоговые кредиты для каждого приложения
+    """
+    # Вычисляем глобальный средний кредит (fallback для приложений без завершенных задач)
+    total_completed_credit = sum(stats.get('completed_credit', 0) for stats in credit_stats.values())
+    total_completed_count = sum(stats.get('completed_count', 0) for stats in credit_stats.values())
+    global_avg_credit = total_completed_credit / total_completed_count if total_completed_count > 0 else 0
+    
+    app_total_credits = {}
+    for app_name, app_stats in credit_stats.items():
+        completed_credit = app_stats.get('completed_credit', 0)
+        completed_count = app_stats.get('completed_count', 0)
+        avg_credit = app_stats.get('avg_credit', 0)
+        in_progress_count = app_stats.get('in_progress_count', 0)
+        unsent_count = app_stats.get('unsent_count', 0)
+        
+        # Если нет среднего кредита, но есть завершенные задачи, вычисляем среднее
+        if avg_credit == 0 and completed_count > 0 and completed_credit > 0:
+            avg_credit = completed_credit / completed_count
+        # Если все еще нет среднего кредита, используем глобальный средний
+        elif avg_credit == 0:
+            avg_credit = global_avg_credit
+        
+        # Ожидаемые кредиты от отправленных задач (в процессе выполнения)
+        expected_credit_from_in_progress = avg_credit * in_progress_count
+        
+        # Ожидаемые кредиты от задач в очереди (готовы к отправке)
+        # Используем меньший вес, так как они еще не отправлены
+        expected_credit_from_unsent = avg_credit * unsent_count * 0.5
+        
+        # Общий ожидаемый кредит
+        expected_credit = expected_credit_from_in_progress + expected_credit_from_unsent
+        
+        # Итоговый кредит = завершенный + ожидаемый
+        total_credit = completed_credit + expected_credit
+        app_total_credits[app_name] = total_credit
+    
+    return app_total_credits
 
 
 def calculate_target_weights(credit_stats, current_weights, smoothing=0.3):
@@ -148,9 +227,16 @@ def calculate_target_weights(credit_stats, current_weights, smoothing=0.3):
     Вычислить целевые веса приложений на основе кредитов.
     
     Цель: сумма кредитов по всем приложениям должна быть равна.
+    Учитывает не только завершенные кредиты, но и ожидаемые от отправленных задач.
     
     Args:
-        credit_stats: словарь {app_name: {'total_credit': float, 'completed_count': int}}
+        credit_stats: словарь {app_name: {
+            'completed_credit': float,
+            'completed_count': int,
+            'avg_credit': float,
+            'in_progress_count': int,
+            'unsent_count': int
+        }}
         current_weights: словарь {app_name: float} - текущие веса
         smoothing: коэффициент сглаживания (0.0 - резкие изменения, 1.0 - без изменений)
     
@@ -162,10 +248,18 @@ def calculate_target_weights(credit_stats, current_weights, smoothing=0.3):
     if not all_apps:
         return current_weights
     
-    # Вычисляем общую сумму кредитов
-    total_credit = sum(stats['total_credit'] for stats in credit_stats.values())
+    # Вычисляем итоговые кредиты для каждого приложения (завершенные + ожидаемые)
+    app_total_credits = calculate_total_credits(credit_stats)
     
-        # Если нет кредитов, возвращаем текущие веса
+    # Добавляем приложения, которых нет в credit_stats (с нулевыми кредитами)
+    for app_name in all_apps:
+        if app_name not in app_total_credits:
+            app_total_credits[app_name] = 0
+    
+    # Вычисляем общую сумму кредитов
+    total_credit = sum(app_total_credits.values())
+    
+    # Если нет кредитов, возвращаем текущие веса
     if total_credit == 0:
         logger = logging.getLogger()
         logger.warning("  ⚠ Нет данных о кредитах, веса не изменяются")
@@ -179,8 +273,7 @@ def calculate_target_weights(credit_stats, current_weights, smoothing=0.3):
     
     for app_name in all_apps:
         current_weight = current_weights.get(app_name, 1.0)
-        app_stats = credit_stats.get(app_name, {'total_credit': 0, 'completed_count': 0})
-        current_credit = app_stats['total_credit']
+        current_credit = app_total_credits.get(app_name, 0)
         
         # Текущая доля приложения
         current_share = current_credit / total_credit if total_credit > 0 else 0
@@ -224,18 +317,18 @@ def update_weights(new_weights):
     # Выполняем все обновления одной транзакцией
     sql = "START TRANSACTION;\n" + "\n".join(update_statements) + "\nCOMMIT;"
     
-    # Выполняем SQL через heredoc
+    # Выполняем SQL через heredoc (silent=True, чтобы не логировать команду)
     mysql_cmd = """bash -c "mysql -u root -ppassword boincserver << 'EOFSQL'
 {}
 EOFSQL" """.format(sql)
     
-    result = run_command(mysql_cmd, check=False)
+    result = run_command(mysql_cmd, check=False, silent=True)
     return result
 
 
 def trigger_feeder_update():
     """Обновить feeder, чтобы он пересобрал массив задач с новыми весами."""
-    run_command("touch {}/reread_db".format(PROJECT_HOME), check=False)
+    run_command("touch {}/reread_db".format(PROJECT_HOME), check=False, silent=True)
     time.sleep(1)  # Даем время feeder обработать триггер
 
 
@@ -253,21 +346,11 @@ def balance_once(smoothing=DEFAULT_SMOOTHING, verbose=True, min_change_threshold
     """
     logger = logging.getLogger()
     
-    if verbose:
-        logger.info("\n" + "="*80)
-        logger.info("БАЛАНСИРОВКА НАГРУЗКИ")
-        logger.info("="*80)
-    
     # Получаем текущие веса
     current_weights = get_current_weights()
     if not current_weights:
         logger.error("  ✗ Не удалось получить текущие веса")
         return False, {}, {}, {}
-    
-    if verbose:
-        logger.info("\nТекущие веса:")
-        for app_name in sorted(current_weights.keys()):
-            logger.info(f"  {app_name}: {current_weights[app_name]:.4f}")
     
     # Получаем статистику по кредитам
     credit_stats = get_credit_statistics()
@@ -277,12 +360,38 @@ def balance_once(smoothing=DEFAULT_SMOOTHING, verbose=True, min_change_threshold
     
     if verbose:
         logger.info("\nСтатистика по кредитам:")
-        total_credit = sum(stats['total_credit'] for stats in credit_stats.values())
+        # Вычисляем итоговые кредиты для отображения
+        app_total_credits = calculate_total_credits(credit_stats)
+        total_credit = sum(app_total_credits.values())
+        
         for app_name in sorted(credit_stats.keys()):
             stats = credit_stats[app_name]
-            share = (stats['total_credit'] / total_credit * 100) if total_credit > 0 else 0
-            logger.info(f"  {app_name}: кредит={stats['total_credit']:.2f} ({share:.1f}%), "
-                  f"завершено={stats['completed_count']}")
+            total_credit_app = app_total_credits.get(app_name, 0)
+            share = (total_credit_app / total_credit * 100) if total_credit > 0 else 0
+            
+            completed_credit = stats.get('completed_credit', 0)
+            completed_count = stats.get('completed_count', 0)
+            in_progress_count = stats.get('in_progress_count', 0)
+            unsent_count = stats.get('unsent_count', 0)
+            
+            # Вычисляем ожидаемый кредит для отображения
+            avg_credit = stats.get('avg_credit', 0)
+            if avg_credit == 0 and completed_count > 0 and completed_credit > 0:
+                avg_credit = completed_credit / completed_count
+            elif avg_credit == 0:
+                # Используем глобальный средний
+                total_completed_credit = sum(s.get('completed_credit', 0) for s in credit_stats.values())
+                total_completed_count = sum(s.get('completed_count', 0) for s in credit_stats.values())
+                avg_credit = total_completed_credit / total_completed_count if total_completed_count > 0 else 0
+            
+            expected_credit = avg_credit * in_progress_count + avg_credit * unsent_count * 0.5
+            
+            logger.info(f"  {app_name}:")
+            logger.info(f"    Итого кредит: {total_credit_app:.2f} ({share:.1f}%)")
+            logger.info(f"      - Завершено: {completed_credit:.2f} ({completed_count} задач)")
+            logger.info(f"      - Ожидается: {expected_credit:.2f} "
+                  f"({in_progress_count} в работе, {unsent_count} в очереди)")
+            logger.info(f"      - Средний кредит: {avg_credit:.4f}")
     
     # Вычисляем целевые веса
     target_weights = calculate_target_weights(credit_stats, current_weights, smoothing)
@@ -317,24 +426,14 @@ def balance_once(smoothing=DEFAULT_SMOOTHING, verbose=True, min_change_threshold
         return True, current_weights, target_weights, credit_stats
     
     # Обновляем веса в БД
-    if verbose:
-        logger.info("\nОбновление весов в БД...")
     success = update_weights(target_weights)
     
     if not success:
         logger.error("  ✗ Ошибка при обновлении весов")
         return False, current_weights, target_weights, credit_stats
     
-    if verbose:
-        logger.info("  ✓ Веса обновлены")
-    
     # Обновляем feeder
-    if verbose:
-        logger.info("Обновление feeder...")
     trigger_feeder_update()
-    
-    if verbose:
-        logger.info("  ✓ Feeder обновлен")
     
     return True, current_weights, target_weights, credit_stats
 
