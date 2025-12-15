@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+
+SERVER_DIR = Path(__file__).resolve().parent.parent.parent
+SNAPSHOT_DIR = SERVER_DIR / "data" / "weights_snapshots"
+
+
+def load_snapshot(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def find_latest_snapshot() -> Path | None:
+    if not SNAPSHOT_DIR.exists():
+        return None
+    files = sorted(
+        [p for p in SNAPSHOT_DIR.glob("pid_weights_*.json") if p.is_file()],
+        key=lambda p: p.stat().st_mtime,
+    )
+    return files[-1] if files else None
+
+
+def compute_credit_shares(states):
+    app_names = set()
+    for st in states:
+        tc = st.get("total_credits_by_app") or {}
+        app_names.update(tc.keys())
+    sorted_apps = sorted(app_names)
+
+    shares_by_app = {name: [] for name in sorted_apps}
+
+    for st in states:
+        tc = st.get("total_credits_by_app") or {}
+        total_sum = st.get("total_credit_sum")
+        if not tc or not total_sum or total_sum == 0:
+            continue
+
+        for name in sorted_apps:
+            val = float(tc.get(name, 0.0))
+            share = (val / float(total_sum)) * 100.0 if total_sum > 0 else 0.0
+            shares_by_app[name].append(share)
+
+    return sorted_apps, shares_by_app
+
+
+def plot_shares(sorted_apps, shares_by_app, title_suffix=""):
+    if not sorted_apps:
+        print("Нет данных для построения графиков (нет total_credits_by_app в снапшотах).")
+        return
+
+    num_apps = len(sorted_apps)
+    cols = 2
+    rows = (num_apps + cols - 1) // cols
+
+    fig, axes = plt.subplots(rows, cols, figsize=(6 * cols, 4 * rows), squeeze=False)
+    fig.suptitle(f"Доля кредита по приложениям{(' ' + title_suffix) if title_suffix else ''}")
+
+    for idx, app_name in enumerate(sorted_apps):
+        r = idx // cols
+        c = idx % cols
+        ax = axes[r][c]
+        series = shares_by_app.get(app_name, [])
+        if not series:
+            ax.text(0.5, 0.5, "Нет данных", ha="center", va="center")
+            ax.set_title(app_name)
+            ax.set_xlabel("Итерация (номер снапшота)")
+            ax.set_ylabel("Доля кредита, %")
+            ax.set_ylim(0, 60)
+            ax.axhline(25, linestyle="--", color="gray", linewidth=1)
+            continue
+        x = list(range(1, len(series) + 1))
+        ax.plot(x, series, marker="o")
+        ax.set_title(app_name)
+        ax.set_xlabel("Итерация (перезапуск feeder)")
+        ax.set_ylabel("Доля кредита, %")
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(0, 60)
+        ax.axhline(25, linestyle="--", color="gray", linewidth=1)
+
+    for idx in range(len(sorted_apps), rows * cols):
+        r = idx // cols
+        c = idx % cols
+        fig.delaxes(axes[r][c])
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.show()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Построение графиков доли кредита по приложениям из pid_weights_*.json"
+    )
+    parser.add_argument(
+        "--file",
+        type=str,
+        default=None,
+        help="Путь к конкретному файлу pid_weights_*.json. "
+             "Если не указан, берётся последний файл из server/data/weights_snapshots.",
+    )
+    args = parser.read_args() if hasattr(parser, "read_args") else parser.parse_args()
+
+    if args.file:
+        snapshot_path = Path(args.file)
+    else:
+        snapshot_path = find_latest_snapshot()
+
+    if not snapshot_path or not snapshot_path.exists():
+        print("Не найден файл снапшота. Убедитесь, что в server/data/weights_snapshots есть pid_weights_*.json")
+        return 1
+
+    print(f"Используется файл снапшота: {snapshot_path}")
+    data = load_snapshot(snapshot_path)
+    states = data.get("states", [])
+
+    if not states:
+        print("В файле снапшота нет поля 'states' или список пуст.")
+        return 1
+
+    apps, shares_by_app = compute_credit_shares(states)
+    title_suffix = f"({snapshot_path.name})"
+    plot_shares(apps, shares_by_app, title_suffix=title_suffix)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
