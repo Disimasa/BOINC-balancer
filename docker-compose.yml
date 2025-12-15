@@ -11,7 +11,7 @@ networks:
 services:
   mysql:
     build: 
-      context: images/mysql
+      context: docker/mysql
     ports:
       - 3306:3306
     volumes:
@@ -21,7 +21,7 @@ services:
 
   makeproject:
     build: 
-      context: images/makeproject
+      context: docker/makeproject
       args:
         - BOINC_USER
         - PROJECT_ROOT
@@ -37,7 +37,7 @@ services:
 
   apache:
     build: 
-      context: images/apache
+      context: docker/apache
       args:
         - BOINC_USER
         - PROJECT_ROOT
@@ -52,7 +52,7 @@ services:
       - "secrets:/run/secrets"
       - "/dev/null:/run/secrets/keys/code_sign_private"
       - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./dist_bin:/home/boincadm/project/dist_bin:ro"
+      - "./dist/bin:/home/boincadm/project/dist_bin:ro"
     ports: 
       - "80:80"
     tty: true
@@ -65,7 +65,7 @@ services:
   # Шаблон для клиентов BOINC
   x-boinc-client: &boinc-client-template
     build:
-      context: images/boinc-client
+      context: docker/boinc-client
     depends_on:
       - apache
     networks:

@@ -3,45 +3,58 @@
 """
 Утилиты для работы с BOINC контейнером.
 """
-import subprocess
 import sys
+import time
+from lib.utils import run_command, PROJECT_HOME
+from lib.daemons import start_all_daemons
 
-PROJECT_HOME = "/home/boincadm/project"
-CONTAINER_NAME = "server-apache-1"
+
+def trigger_feeder_update():
+    run_command(f"touch {PROJECT_HOME}/reread_db", check=False)
 
 
-def run_command(cmd, check=True, capture_output=False):
-    """Выполнить команду в контейнере apache и вывести stdout/stderr."""
-    if isinstance(cmd, str):
-        full_cmd = ["wsl.exe", "-e", "docker", "exec", CONTAINER_NAME, "bash", "-c", cmd]
-    else:
-        full_cmd = ["wsl.exe", "-e", "docker", "exec", CONTAINER_NAME] + cmd
+def restart_feeder():
+    """Перезапустить feeder для пересчета распределения слотов.
     
-    try:
-        proc = subprocess.Popen(
-            full_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        stdout, stderr = proc.communicate()
-        
-        if check and proc.returncode != 0:
-            if not capture_output:
-                print(f"✗ Ошибка: команда завершилась с кодом {proc.returncode}", file=sys.stderr)
-                if stderr:
-                    print(stderr, file=sys.stderr)
-            if capture_output:
-                return ""
-            return None
-        
-        if capture_output:
-            return stdout.strip() if stdout else ""
-        return True
-    except Exception as e:
-        if not capture_output:
-            print(f"✗ Исключение при выполнении команды: {e}", file=sys.stderr)
-        if capture_output:
-            return ""
-        return None
+    ВАЖНО: После обновления весов нужно перезапустить feeder,
+    так как weighted_interleave (распределение слотов) вызывается
+    только при старте и не пересчитывается после reread_db.
+    
+    Используем SIGHUP для корректной остановки feeder, затем запускаем заново.
+    """
+    # Находим PID процесса feeder (точное совпадение команды)
+    cmd = "ps aux | grep '[f]eeder -d' | awk '{print $2}'"
+    stdout, success = run_command(cmd, check=False, capture_output=True)
+    
+    if success and stdout:
+        pid = stdout.strip().split('\n')[0].strip()
+        if pid and pid.isdigit():
+            # Отправляем SIGHUP для корректной остановки feeder
+            run_command(f"kill -HUP {pid}", check=False)
+            time.sleep(2)
+            
+            # Запускаем feeder заново
+            run_command(f"cd {PROJECT_HOME} && nohup bin/feeder -d 3 --allapps --priority_order --sleep_interval 1 > logs/feeder.log 2>&1 &", check=False)
+            time.sleep(3)
+            
+            # Проверяем, что feeder запустился
+            cmd_check = "ps aux | grep '[f]eeder -d' | wc -l"
+            stdout_check, success_check = run_command(cmd_check, check=False, capture_output=True)
+            
+            if success_check and stdout_check and int(stdout_check.strip()) > 0:
+                return True
+            else:
+                print("⚠ Feeder не запустился после перезапуска", file=sys.stderr)
+                return False
+    
+    print("⚠ Процесс feeder не найден", file=sys.stderr)
+    return False
+
+
+def ensure_daemons_running():
+    """Убедиться, что все демоны (валидаторы и ассимиляторы) запущены.
+    
+    Перезапускает упавшие демоны после перезапуска feeder.
+    """
+    start_all_daemons()
 

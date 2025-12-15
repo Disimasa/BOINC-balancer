@@ -1,6 +1,0 @@
-/root/project/log_*/* {
-    missingok
-    rotate 7
-    daily
-    olddir .old
-}
