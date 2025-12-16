@@ -4,8 +4,8 @@ import argparse
 from lib.clients import connect_all_clients
 
 def main():
-    parser = argparse.ArgumentParser(description="Подключение клиентов BOINC к серверу")
-    parser.add_argument("--count", type=int, default=20, help="Количество клиентов для подключения")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--count", type=int, default=20)
     args = parser.parse_args()
     
     success = connect_all_clients(count=args.count)

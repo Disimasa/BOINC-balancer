@@ -192,38 +192,13 @@ def balance_once(smoothing=DEFAULT_SMOOTHING, verbose=True, min_change_threshold
         logger.error("  ✗ Ошибка при обновлении весов")
         return False, current_weights, target_weights, credit_stats
     
-    global _last_feeder_restart_time
-    current_time = time.time()
-    time_since_last_restart = current_time - _last_feeder_restart_time
-    
-    max_change_pct = 0
-    for app_name in target_weights:
-        old_w = current_weights.get(app_name, 1.0)
-        new_w = target_weights[app_name]
-        if old_w > 0:
-            change_pct = abs((new_w - old_w) / old_w)
-            max_change_pct = max(max_change_pct, change_pct)
-        elif new_w > 0:
-            max_change_pct = max(max_change_pct, 1.0)
-    
-    should_restart = (max_change_pct >= _min_restart_change_threshold and 
-                     time_since_last_restart >= _min_restart_interval)
-    
-    if should_restart:
-        if verbose:
-            logger.info(f"\nПерезапуск feeder для применения новых весов (изменение {max_change_pct*100:.1f}%)...")
-        restart_feeder()
-        _last_feeder_restart_time = current_time
-        time.sleep(3)
-        if verbose:
-            logger.info("Проверка валидаторов и ассимиляторов...")
-        ensure_daemons_running()
-    else:
-        trigger_feeder_update()
-        if verbose and max_change_pct < _min_restart_change_threshold:
-            logger.info(f"\nВеса обновлены через reread_db (изменение {max_change_pct*100:.1f}% < {_min_restart_change_threshold*100:.0f}%, перезапуск не требуется)")
-        elif verbose:
-            logger.info(f"\nВеса обновлены через reread_db (последний перезапуск был {time_since_last_restart:.0f} сек назад)")
+    if verbose:
+        logger.info("\nПерезапуск feeder для применения новых весов...")
+    restart_feeder()
+    time.sleep(3)
+    if verbose:
+        logger.info("Проверка валидаторов и ассимиляторов...")
+    ensure_daemons_running()
     
     return True, current_weights, target_weights, credit_stats
 
@@ -295,23 +270,14 @@ def balance_loop(interval=60, smoothing=DEFAULT_SMOOTHING, max_iterations=None, 
 def main():
     import argparse
     
-    parser = argparse.ArgumentParser(
-        description="Динамический балансировщик нагрузки для BOINC",
-        formatter_class=argparse.RawDescriptionHelpFormatter,)
-    parser.add_argument("--loop", action="store_true", 
-                       help="Запустить цикл балансировки")
-    parser.add_argument("--interval", type=int, default=60,
-                       help="Интервал между итерациями в секундах (по умолчанию 60)")
-    parser.add_argument("--smoothing", type=float, default=DEFAULT_SMOOTHING,
-                       help=f"Коэффициент сглаживания 0.0-1.0 (по умолчанию {DEFAULT_SMOOTHING})")
-    parser.add_argument("--max-iterations", type=int, default=None,
-                       help="Максимальное количество итераций (только для --loop)")
-    parser.add_argument("--quiet", action="store_true",
-                       help="Минимальный вывод")
-    parser.add_argument("--log-file", type=str, default=None,
-                       help="Путь к файлу для записи логов (по умолчанию: dynamic_balancer.log)")
-    parser.add_argument("--min-change", type=float, default=0.01,
-                       help="Минимальное изменение веса для обновления (по умолчанию: 0.01)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--loop", action="store_true")
+    parser.add_argument("--interval", type=int, default=60)
+    parser.add_argument("--smoothing", type=float, default=DEFAULT_SMOOTHING)
+    parser.add_argument("--max-iterations", type=int, default=None)
+    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--log-file", type=str, default=None)
+    parser.add_argument("--min-change", type=float, default=0.001)
     
     args = parser.parse_args()
     

@@ -123,13 +123,8 @@ def install_app_binary(app_name, binary_path, version_num):
     if not run_command(cmd, check=True):
         return False, None, None
     
-    # Подписываем бинарник
     binary_full_path = os.path.join(platform_dir, binary_name)
     sig_path = os.path.join(platform_dir, "{}.sig".format(binary_name))
-    
-    # Пробуем несколько возможных путей к ключу
-    # 1. keys/code_sign_private (основной путь)
-    # 2. /run/secrets/keys/code_sign_private (если keys - симлинк)
     cmd_sign = (
         "bin_path='{bin_path}' && "
         "sig_path='{sig_path}' && "
@@ -374,34 +369,26 @@ def create_batch_of_tasks(batch_num, apps_config, target_nresults, app_templates
     """
     created_tasks = []
     
-    # Создаем список приложений и перемешиваем его для случайного порядка
     app_names = list(apps_config.keys())
     random.shuffle(app_names)
     
-    # Если хосты переданы, распределяем задачи по хостам
     host_idx = 0
     sorted_hosts = None
-    if hosts:  # hosts может быть None или пустым списком - только тогда используем балансировку
-        # Сортируем хосты по количеству задач (меньше задач = выше приоритет)
+    if hosts:
         sorted_hosts = sorted(hosts, key=lambda x: x['task_count'])
-        # Распределяем задачи батча по хостам (round-robin)
         host_idx = 0
     
     for app_name in app_names:
-        # Используем уже подготовленные шаблоны
         if app_name not in app_templates:
             continue
         
         cfg = apps_config[app_name]
         tmpl_in_rel, tmpl_out_rel, placeholder_rel = app_templates[app_name]
         
-        # Определяем хост для задачи (если есть хосты)
         target_host_id = None
         if hosts:
             target_host_id = sorted_hosts[host_idx % len(sorted_hosts)]['id']
             host_idx += 1
-        
-        # Создаем одну задачу для этого приложения
         batch_tasks = create_workunits(app_name, 1, target_nresults, tmpl_in_rel, tmpl_out_rel, placeholder_rel, cfg["version_num"], start_index=batch_num, target_host_id=target_host_id)
         created_tasks.extend(batch_tasks)
     
@@ -416,14 +403,12 @@ def update_app_version_ids_batch(all_created_tasks):
     if not all_created_tasks:
         return
     
-    # Группируем задачи по приложению
     tasks_by_app = {}
     for app_name, wu_name in all_created_tasks:
         if app_name not in tasks_by_app:
             tasks_by_app[app_name] = []
         tasks_by_app[app_name].append(wu_name)
     
-    # Получаем app_version_id для каждого приложения
     app_version_map = {}
     for app_name in tasks_by_app.keys():
         cfg = APP_CONFIGS[app_name]
@@ -434,7 +419,6 @@ def update_app_version_ids_batch(all_created_tasks):
             print(f"  ⚠ Предупреждение: app_version не найден для {app_name}. "
                   f"Задачи будут иметь app_version_id=0.", file=sys.stderr)
     
-    # Создаем SQL для обновления всех задач одной транзакцией
     update_statements = []
     for app_name, wu_names in tasks_by_app.items():
         if app_name not in app_version_map:
@@ -455,15 +439,10 @@ def update_app_version_ids_batch(all_created_tasks):
         print("  ⚠ Нет задач для обновления app_version_id", file=sys.stderr)
         return
     
-    # Выполняем все обновления одной транзакцией
     print("\nОбновление app_version_id для всех созданных задач...")
     
-    # Формируем полный SQL с транзакцией
     sql_lines = ["START TRANSACTION;"] + update_statements + ["COMMIT;"]
     sql_content = "\n".join(sql_lines)
-    
-    # Выполняем SQL через stdin напрямую в docker exec
-    # Это более надежный способ, чем heredoc через run_command
     try:
         result = run_local_command(
             ["docker", "exec", "-i", CONTAINER_NAME,
@@ -485,21 +464,17 @@ def update_app_version_ids_batch(all_created_tasks):
     if result:
         total_updated = sum(len(wu_names) for wu_names in tasks_by_app.values())
         
-        # Проверяем результат
         for app_name, wu_names in tasks_by_app.items():
             if app_name not in app_version_map:
                 continue
             app_version_id = app_version_map[app_name]
             wu_names_str = "', '".join(wu_names)
-            # Экранируем кавычки для SQL
             wu_names_escaped = wu_names_str.replace("'", "\\'")
             check_sql = (
                 "SELECT COUNT(*) FROM workunit w "
                 "JOIN app a ON w.appid = a.id "
                 "WHERE a.name = '{}' AND w.name IN ('{}') AND w.app_version_id = {};"
             ).format(app_name, wu_names_escaped, app_version_id)
-            
-            # Выполняем проверку через stdin
             try:
                 result = run_local_command(
                     ["docker", "exec", "-i", CONTAINER_NAME,
@@ -526,7 +501,6 @@ def ensure_signing_key():
     """
     key_path = "keys/code_sign_private"
     
-    # Проверяем, существует ли ключ, является ли он обычным файлом и не пустой ли он
     cmd_check = (
         "if [ -f {key} ] && [ ! -c {key} ] && [ -s {key} ]; then "
         "echo 'EXISTS'; "
@@ -697,22 +671,16 @@ def create_tasks(app=None, count=None, target_nresults=1, balance_hosts=False):
         
         # if all_created_tasks:
         #     time.sleep(2)
-        #     update_app_version_ids_batch(all_created_tasks)
-        
-        # print("\nОбновление feeder для пересборки массива задач...")
-        # run_command(f"touch {PROJECT_HOME}/reread_db", check=False)
-        # time.sleep(3)
-        # print("  ✓ Feeder обновлен")
     
     return True
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Создание нативных задач из готовых бинарей (create_work)")
-    parser.add_argument("--app", choices=list(APP_CONFIGS.keys()), help="Создать задачи только для одного приложения")
-    parser.add_argument("--count", type=int, help="Количество задач (для одного app или для всех)")
-    parser.add_argument("--target-nresults", type=int, default=1, help="Количество репликаций (по умолчанию 1)")
-    parser.add_argument("--balance-hosts", action="store_true", help="Балансировать задачи между хостами (по умолчанию отключено)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--app", choices=list(APP_CONFIGS.keys()))
+    parser.add_argument("--count", type=int)
+    parser.add_argument("--target-nresults", type=int, default=1)
+    parser.add_argument("--balance-hosts", action="store_true")
     args = parser.parse_args()
     
     return create_tasks(

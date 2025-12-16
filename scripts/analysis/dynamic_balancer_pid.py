@@ -192,9 +192,6 @@ def pid_calculate_weights(credit_stats, current_weights, dt, pid_state, kp, ki, 
 
         output = kp * error + ki * ie + kd * de
         scale = per_app_scale.get(app_name, 1.0)
-        # Временно не используем масштабирование по среднему кредиту
-        # if scale != 0:
-        #     output = output / scale
 
         factor = 1.0 + output
 
@@ -437,19 +434,16 @@ def balance_loop(interval=60, kp=DEFAULT_KP, ki=DEFAULT_KI, kd=DEFAULT_KD,
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="PID-балансировщик нагрузки для BOINC",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument("--loop", action="store_true", help="Запустить цикл балансировки")
-    parser.add_argument("--interval", type=int, default=60, help="Интервал между итерациями (сек)")
-    parser.add_argument("--kp", type=float, default=DEFAULT_KP, help="Пропорциональный коэффициент")
-    parser.add_argument("--ki", type=float, default=DEFAULT_KI, help="Интегральный коэффициент")
-    parser.add_argument("--kd", type=float, default=DEFAULT_KD, help="Дифференциальный коэффициент")
-    parser.add_argument("--max-iterations", type=int, default=None, help="Макс. итераций (для --loop)")
-    parser.add_argument("--quiet", action="store_true", help="Минимальный вывод")
-    parser.add_argument("--log-file", type=str, default=None, help="Файл логов (по умолчанию: dynamic_balancer_pid.log)")
-    parser.add_argument("--min-change", type=float, default=0.001, help="Мин. относительное изменение веса (доля, по умолчанию 0.05 = 5%)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--loop", action="store_true")
+    parser.add_argument("--interval", type=int, default=60)
+    parser.add_argument("--kp", type=float, default=DEFAULT_KP)
+    parser.add_argument("--ki", type=float, default=DEFAULT_KI)
+    parser.add_argument("--kd", type=float, default=DEFAULT_KD)
+    parser.add_argument("--max-iterations", type=int, default=None)
+    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--log-file", type=str, default=None)
+    parser.add_argument("--min-change", type=float, default=0.001)
 
     args = parser.parse_args()
 

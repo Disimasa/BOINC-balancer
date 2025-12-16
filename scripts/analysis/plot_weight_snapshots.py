@@ -57,11 +57,9 @@ def compute_credit_shares(states, use_completed=False):
 
 
 def calculate_error_metrics(shares_by_app, max_iter=20, target_share=25.0):
-    """Вычисляет метрики ошибки для последних max_iter итераций."""
     if not shares_by_app:
         return None
     
-    # Берем последние max_iter итераций для каждого приложения
     last_shares = {}
     for app_name, shares in shares_by_app.items():
         last_shares[app_name] = shares[-max_iter:] if len(shares) >= max_iter else shares
@@ -69,12 +67,10 @@ def calculate_error_metrics(shares_by_app, max_iter=20, target_share=25.0):
     if not last_shares:
         return None
     
-    # Находим максимальную длину (на случай, если у разных приложений разное количество итераций)
     max_len = max(len(shares) for shares in last_shares.values())
     if max_len == 0:
         return None
     
-    # Вычисляем метрики для каждой итерации
     errors_by_iteration = []
     for i in range(max_len):
         iteration_errors = []
@@ -85,11 +81,8 @@ def calculate_error_metrics(shares_by_app, max_iter=20, target_share=25.0):
                 iteration_errors.append(error)
         
         if iteration_errors:
-            # RMSE для этой итерации
             rmse = math.sqrt(sum(e**2 for e in iteration_errors) / len(iteration_errors))
-            # MAE для этой итерации
             mae = sum(iteration_errors) / len(iteration_errors)
-            # Максимальная ошибка для этой итерации
             max_err = max(iteration_errors)
             errors_by_iteration.append({
                 'rmse': rmse,
@@ -100,7 +93,6 @@ def calculate_error_metrics(shares_by_app, max_iter=20, target_share=25.0):
     if not errors_by_iteration:
         return None
     
-    # Средние метрики по всем итерациям
     avg_rmse = sum(e['rmse'] for e in errors_by_iteration) / len(errors_by_iteration)
     avg_mae = sum(e['mae'] for e in errors_by_iteration) / len(errors_by_iteration)
     avg_max_err = sum(e['max_err'] for e in errors_by_iteration) / len(errors_by_iteration)
@@ -157,22 +149,9 @@ def plot_shares(sorted_apps, shares_by_app, title_suffix=""):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Построение графиков доли кредита по приложениям из pid_weights_*.json"
-    )
-    parser.add_argument(
-        "--file",
-        type=str,
-        default=None,
-        help="Путь к конкретному файлу pid_weights_*.json. "
-             "Если не указан, берётся последний файл из server/data/weights_snapshots.",
-    )
-    parser.add_argument(
-        "--completed",
-        action="store_true",
-        help="Строить графики по completed_credits_by_app (по завершённым задачам), "
-             "а не по total_credits_by_app.",
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--file", type=str, default=None)
+    parser.add_argument("--completed", action="store_true")
     args = parser.parse_args()
 
     if args.file:
@@ -198,7 +177,6 @@ def main():
     else:
         title_suffix = f"(total, {snapshot_path.name})"
     
-    # Расчет метрик ошибки для последних 20 итераций
     metrics = calculate_error_metrics(shares_by_app, max_iter=20, target_share=25.0)
     if metrics:
         print("\n" + "="*80)

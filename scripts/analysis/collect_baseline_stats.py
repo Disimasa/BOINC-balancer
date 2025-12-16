@@ -157,7 +157,6 @@ def step_wait():
                     share = (total_app / total_credit_all) * 100.0
                     credit_shares_history.setdefault(app_name, []).append(share)
 
-    # Считаем метрики по окну последних observe_window секунд
     window_metrics = {}
     for app_name, values in credit_shares_history.items():
         if not values:

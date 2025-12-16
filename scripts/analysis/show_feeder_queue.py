@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Скрипт для просмотра количества задач каждого типа в очереди feeder (shared memory).
-
-Shared memory в BOINC:
-- Создается процессом feeder
-- Содержит массив задач (work items), готовых к отправке клиентам
-- Scheduler читает из неё и отправляет задачи клиентам
-- Обновляется feeder'ом при добавлении новых задач из БД
-"""
 import sys
 import re
 from collections import defaultdict
@@ -156,8 +146,6 @@ def show_feeder_queue_count():
         print("Нет вывода от show_shmem")
         return False
     
-    # Парсим вывод show_shmem
-    # Ищем строки вида: "   3    long_task        384        384..."
     app_counts = defaultdict(int)
     total_slots = 0
     empty_slots = 0
@@ -166,7 +154,6 @@ def show_feeder_queue_count():
     in_jobs_section = False
     
     for line in lines:
-        # Ищем начало секции Jobs
         if 'slot' in line.lower() and 'app' in line.lower() and 'WU ID' in line:
             in_jobs_section = True
             continue
@@ -174,22 +161,17 @@ def show_feeder_queue_count():
         if not in_jobs_section:
             continue
         
-        # Пропускаем повторяющиеся заголовки
         if 'slot' in line.lower() and 'app' in line.lower() and 'WU ID' in line:
             continue
         
-        # Пропускаем разделители
         if line.strip().startswith('-'):
             continue
         
-        # Пустой слот: "   1: ---" или "  86: ---"
         if re.match(r'\s*\d+:\s+---', line):
             empty_slots += 1
             total_slots += 1
             continue
         
-        # Строка с задачей: "   0    long_task       1698       1698..."
-        # Формат: номер_слота (без двоеточия), имя_приложения, WU ID, result ID, ...
         match = re.match(r'\s*\d+\s+(\w+)\s+\d+', line)
         if match:
             app_name = match.group(1)
