@@ -9,16 +9,16 @@ from datetime import datetime
 from lib.apps import get_current_weights, update_weights
 from lib.statistics import get_credit_statistics
 from lib.boinc_utils import trigger_feeder_update, restart_feeder, ensure_daemons_running
-from scripts.analysis.show_feeder_queue import get_queue_shares_from_shmem
+from scripts.analysis.show_feeder_queue import get_queue_shares_from_shmem, get_queue_counts_from_shmem
 
 MIN_WEIGHT = 0.001
-MAX_WEIGHT = 100.0
+MAX_WEIGHT = 1000.0
 
 DEFAULT_KP = 1
 DEFAULT_KI = 0.1
 DEFAULT_KD = 0.3
 
-MAX_STEP_CHANGE = 0.5
+MAX_STEP_CHANGE = 1
 INTEGRAL_LIMIT = 1.0
 QUEUE_SATURATION_THRESHOLD = 0.99
 
@@ -102,16 +102,43 @@ def pid_calculate_weights(credit_stats, current_weights, dt, pid_state, kp, ki, 
 
     all_apps = set(credit_stats.keys()) | set(current_weights.keys())
     if not all_apps:
-        return current_weights, pid_state
+        return current_weights, pid_state, {}
 
-    all_apps_have_completed = all(
-        credit_stats.get(app, {}).get('completed_count', 0) > 0 for app in all_apps
+    all_apps_have_nonzero_credit = all(
+        credit_stats.get(app, {}).get('completed_credit', 0) > 0 for app in all_apps
     )
-    if not all_apps_have_completed:
-        logger.warning("  ⚠ Не у всех приложений есть завершенные задачи, веса не изменяются")
-        return current_weights, pid_state
+    any_app_has_nonzero_credit = any(
+        credit_stats.get(app, {}).get('completed_credit', 0) > 0 for app in all_apps
+    )
+    if not any_app_has_nonzero_credit:
+        logger.warning("  ⚠ Нет завершенных задач с ненулевым кредитом ни у одного приложения, веса не изменяются")
+        return current_weights, pid_state, {}
+    if not all_apps_have_nonzero_credit:
+        logger.warning("  ⚠ Не у всех приложений есть завершенные задачи с ненулевым кредитом, веса не изменяются")
+        return current_weights, pid_state, {}
 
     app_total_credits = calculate_total_credits(credit_stats)
+
+    total_completed_credit = sum(stats.get('completed_credit', 0) for stats in credit_stats.values())
+    total_completed_count = sum(stats.get('completed_count', 0) for stats in credit_stats.values())
+    global_avg_credit = total_completed_credit / total_completed_count if total_completed_count > 0 else 0
+
+    per_app_scale = {}
+    for app_name in all_apps:
+        stats = credit_stats.get(app_name, {})
+        completed_credit = stats.get('completed_credit', 0)
+        completed_count = stats.get('completed_count', 0)
+        avg_credit = stats.get('avg_credit', 0)
+        if avg_credit == 0 and completed_count > 0 and completed_credit > 0:
+            avg_credit = completed_credit / completed_count
+        elif avg_credit == 0:
+            avg_credit = global_avg_credit
+        if global_avg_credit > 0 and avg_credit > 0:
+            scale = avg_credit / global_avg_credit
+        else:
+            scale = 1.0
+        scale = max(0.5, min(4.0, scale))
+        per_app_scale[app_name] = scale
 
     for app_name in all_apps:
         if app_name not in app_total_credits:
@@ -120,9 +147,10 @@ def pid_calculate_weights(credit_stats, current_weights, dt, pid_state, kp, ki, 
     total_credit = sum(app_total_credits.values())
     if total_credit == 0:
         logger.warning("  ⚠ Нет данных о кредитах, веса не изменяются")
-        return current_weights, pid_state
+        return current_weights, pid_state, {}
 
     shmem_queue_shares = get_queue_shares_from_shmem()
+    shmem_queue_counts, total_slots = get_queue_counts_from_shmem()
     queue_shares = {}
     saturated_apps = set()
     if shmem_queue_shares:
@@ -132,65 +160,99 @@ def pid_calculate_weights(credit_stats, current_weights, dt, pid_state, kp, ki, 
             if share >= QUEUE_SATURATION_THRESHOLD:
                 saturated_apps.add(app_name)
     else:
-        # Если не удалось получить shmem, считаем, что очередь не насыщена
         for app_name in all_apps:
             queue_shares[app_name] = 0.0
     any_saturated = bool(saturated_apps)
 
     target_share = 1.0 / len(all_apps)
 
-    # Инициализация PID состояний
     integral_error = pid_state.get("integral_error", {})
     prev_error = pid_state.get("prev_error", {})
 
-    new_weights = {}
+    raw_weights = {}
+    frozen_weights = {}
+    freeze_flags = {}
 
     for app_name in all_apps:
         current_weight = current_weights.get(app_name, 1.0)
         current_credit = app_total_credits.get(app_name, 0)
         current_share = current_credit / total_credit if total_credit > 0 else 0
         queue_share = queue_shares.get(app_name, 0.0)
+        queue_count = shmem_queue_counts.get(app_name, 0)
 
         error = target_share - current_share
 
-        # Интеграл
         ie = integral_error.get(app_name, 0.0) + error * dt
-        # Anti-windup
         ie = max(-INTEGRAL_LIMIT, min(INTEGRAL_LIMIT, ie))
         integral_error[app_name] = ie
 
-        # Дериватива
         prev_e = prev_error.get(app_name, 0.0)
         de = (error - prev_e) / dt if dt > 0 else 0.0
         prev_error[app_name] = error
 
-        # PID
         output = kp * error + ki * ie + kd * de
+        scale = per_app_scale.get(app_name, 1.0)
+        # Временно не используем масштабирование по среднему кредиту
+        # if scale != 0:
+        #     output = output / scale
 
-        # Перевод в множитель изменения веса
         factor = 1.0 + output
+
+        frozen = False
 
         if queue_share >= QUEUE_SATURATION_THRESHOLD and factor > 1.0:
             factor = 1.0
+            frozen = True
 
         if any_saturated and app_name not in saturated_apps and factor < 1.0:
             factor = 1.0
+            frozen = True
+
+        if queue_count <= 1 and factor < 1.0:
+            factor = 1.0
+            frozen = True
+
+        if total_slots > 0 and queue_count >= total_slots - 1 and factor > 1.0:
+            factor = 1.0
+            frozen = True
 
         factor = max(1.0 - MAX_STEP_CHANGE, min(1.0 + MAX_STEP_CHANGE, factor))
 
-        new_weight = current_weight * factor
-        new_weight = max(MIN_WEIGHT, min(MAX_WEIGHT, new_weight))
+        if frozen:
+            frozen_weights[app_name] = current_weight
+        else:
+            raw_w = current_weight * factor
+            raw_w = max(MIN_WEIGHT, min(MAX_WEIGHT, raw_w))
+            raw_weights[app_name] = raw_w
 
-        new_weights[app_name] = new_weight
+        freeze_flags[app_name] = frozen
+
+    total_raw = sum(raw_weights.values())
+    total_current = sum(current_weights.values()) if current_weights else 1.0
+    frozen_sum = sum(frozen_weights.values())
+
+    new_weights = {}
+
+    if total_raw > 0 and total_current > frozen_sum:
+        target_sum_for_raw = total_current - frozen_sum
+        for app_name, rw in raw_weights.items():
+            w = rw / total_raw * target_sum_for_raw
+            new_weights[app_name] = max(MIN_WEIGHT, min(MAX_WEIGHT, w))
+    else:
+        for app_name, rw in raw_weights.items():
+            new_weights[app_name] = rw
+
+    for app_name, fw in frozen_weights.items():
+        new_weights[app_name] = fw
 
     pid_state["integral_error"] = integral_error
     pid_state["prev_error"] = prev_error
 
-    return new_weights, pid_state
+    return new_weights, pid_state, freeze_flags
 
 
 def balance_once(pid_state, kp=DEFAULT_KP, ki=DEFAULT_KI, kd=DEFAULT_KD, verbose=True,
-                 min_change_threshold=0.01, dt=60):
+                 min_change_threshold=0.001, dt=60):
     logger = logging.getLogger()
 
     current_weights = get_current_weights()
@@ -205,6 +267,8 @@ def balance_once(pid_state, kp=DEFAULT_KP, ki=DEFAULT_KI, kd=DEFAULT_KD, verbose
 
     app_total_credits = calculate_total_credits(credit_stats)
     total_credit_sum = sum(app_total_credits.values())
+    completed_credits_by_app = {name: stats.get("completed_credit", 0) for name, stats in credit_stats.items()}
+    completed_credit_sum = sum(completed_credits_by_app.values())
 
     if verbose:
         logger.info("\nСтатистика по кредитам:")
@@ -237,7 +301,7 @@ def balance_once(pid_state, kp=DEFAULT_KP, ki=DEFAULT_KI, kd=DEFAULT_KD, verbose
                 logger.info(f"      - В очереди: {unsent_count} (не учитываются в расчете)")
             logger.info(f"      - Средний кредит: {avg_credit:.4f}")
 
-    target_weights, pid_state = pid_calculate_weights(
+    target_weights, pid_state, freeze_flags = pid_calculate_weights(
         credit_stats, current_weights, dt, pid_state, kp, ki, kd
     )
 
@@ -246,27 +310,26 @@ def balance_once(pid_state, kp=DEFAULT_KP, ki=DEFAULT_KI, kd=DEFAULT_KD, verbose
         for app_name in sorted(target_weights.keys()):
             old_w = current_weights.get(app_name, 1.0)
             new_w = target_weights[app_name]
-            change = ((new_w - old_w) / old_w * 100) if old_w > 0 else 0
-            logger.info(f"  {app_name}: {new_w:.4f} (было {old_w:.4f}, изменение {change:+.1f}%)")
+            change_pct = ((new_w - old_w) / old_w * 100) if old_w > 0 else 0
+            freeze_suffix = " freeze" if freeze_flags.get(app_name) else ""
+            logger.info(f"  {app_name}: {new_w:.4f} (было {old_w:.4f}, изменение {change_pct:+.1f}%){freeze_suffix}")
 
     weights_changed = False
     changes_detail = []
     for app_name in target_weights:
         old_w = current_weights.get(app_name, 1.0)
         new_w = target_weights[app_name]
-        change = abs(new_w - old_w)
-        change_pct = ((new_w - old_w) / old_w * 100) if old_w > 0 else 0
-        changes_detail.append((app_name, old_w, new_w, change, change_pct))
-        if change > min_change_threshold:
+        change_pct = ((new_w - old_w) / old_w) if old_w > 0 else 0.0
+        changes_detail.append((app_name, old_w, new_w, change_pct))
+        if abs(change_pct) > min_change_threshold:
             weights_changed = True
 
     if not weights_changed:
         if verbose:
-            logger.info(f"\n  ⚠ Веса не обновляются: все изменения ≤ {min_change_threshold}")
+            logger.info(f"\n  ⚠ Веса не обновляются: все относительные изменения ≤ {min_change_threshold*100:.1f}%")
             logger.info("  Детали изменений:")
-            for app_name, old_w, new_w, change, change_pct in changes_detail:
-                logger.info(f"    {app_name}: изменение = {change:.6f} ({change_pct:+.4f}%)")
-            logger.info(f"  (Порог обновления: {min_change_threshold})")
+            for app_name, old_w, new_w, change_pct in changes_detail:
+                logger.info(f"    {app_name}: {old_w:.6f} → {new_w:.6f} (изменение {change_pct*100:+.4f}%)")
         return True, current_weights, target_weights, credit_stats, pid_state
 
     success = update_weights(target_weights)
@@ -274,54 +337,30 @@ def balance_once(pid_state, kp=DEFAULT_KP, ki=DEFAULT_KI, kd=DEFAULT_KD, verbose
         logger.error("  ✗ Ошибка при обновлении весов")
         return False, current_weights, target_weights, credit_stats, pid_state
 
-    global _last_feeder_restart_time
-    current_time = time.time()
-    time_since_last_restart = current_time - _last_feeder_restart_time
+    snapshot_state = {
+        "timestamp": datetime.now().isoformat(),
+        "kp": kp,
+        "ki": ki,
+        "kd": kd,
+        "max_step_change": MAX_STEP_CHANGE,
+        "min_restart_change_threshold": _min_restart_change_threshold,
+        "max_change_pct": 0,
+        "current_weights": current_weights,
+        "new_weights": target_weights,
+        "total_credits_by_app": app_total_credits,
+        "total_credit_sum": total_credit_sum,
+        "completed_credits_by_app": completed_credits_by_app,
+        "completed_credit_sum": completed_credit_sum,
+    }
+    append_snapshot(pid_state.get("snapshot_path"), snapshot_state)
 
-    max_change_pct = 0
-    for app_name in target_weights:
-        old_w = current_weights.get(app_name, 1.0)
-        new_w = target_weights[app_name]
-        if old_w > 0:
-            change_pct = abs((new_w - old_w) / old_w)
-            max_change_pct = max(max_change_pct, change_pct)
-        elif new_w > 0:
-            max_change_pct = max(max_change_pct, 1.0)
-
-    should_restart = (max_change_pct >= _min_restart_change_threshold and
-                      time_since_last_restart >= _min_restart_interval)
-
-    if should_restart:
-        # Перед перезапуском feeder добавляем состояние в файл снапшотов
-        snapshot_state = {
-            "timestamp": datetime.now().isoformat(),
-            "kp": kp,
-            "ki": ki,
-            "kd": kd,
-            "max_step_change": MAX_STEP_CHANGE,
-            "min_restart_change_threshold": _min_restart_change_threshold,
-            "max_change_pct": max_change_pct,
-            "current_weights": current_weights,
-            "new_weights": target_weights,
-            "total_credits_by_app": app_total_credits,
-            "total_credit_sum": total_credit_sum,
-        }
-        append_snapshot(pid_state.get("snapshot_path"), snapshot_state)
-
-        if verbose:
-            logger.info(f"\nПерезапуск feeder для применения новых весов (изменение {max_change_pct*100:.1f}%)...")
-        restart_feeder()
-        _last_feeder_restart_time = current_time
-        time.sleep(3)
-        if verbose:
-            logger.info("Проверка валидаторов и ассимиляторов...")
-        ensure_daemons_running()
-    else:
-        trigger_feeder_update()
-        if verbose and max_change_pct < _min_restart_change_threshold:
-            logger.info(f"\nВеса обновлены через reread_db (изменение {max_change_pct*100:.1f}% < {_min_restart_change_threshold*100:.0f}%, перезапуск не требуется)")
-        elif verbose:
-            logger.info(f"\nВеса обновлены через reread_db (последний перезапуск был {time_since_last_restart:.0f} сек назад)")
+    if verbose:
+        logger.info("\nПерезапуск feeder для применения новых весов (без проверки порога изменений)...")
+    restart_feeder()
+    time.sleep(3)
+    if verbose:
+        logger.info("Проверка валидаторов и ассимиляторов...")
+    ensure_daemons_running()
 
     return True, current_weights, target_weights, credit_stats, pid_state
 
@@ -350,7 +389,7 @@ def setup_logging(log_file=None):
 
 
 def balance_loop(interval=60, kp=DEFAULT_KP, ki=DEFAULT_KI, kd=DEFAULT_KD,
-                 max_iterations=None, log_file=None, min_change_threshold=0.01):
+                 max_iterations=None, log_file=None, min_change_threshold=0.001):
     logger = setup_logging(log_file)
 
     logger.info("="*80)
@@ -410,7 +449,7 @@ def main():
     parser.add_argument("--max-iterations", type=int, default=None, help="Макс. итераций (для --loop)")
     parser.add_argument("--quiet", action="store_true", help="Минимальный вывод")
     parser.add_argument("--log-file", type=str, default=None, help="Файл логов (по умолчанию: dynamic_balancer_pid.log)")
-    parser.add_argument("--min-change", type=float, default=0.01, help="Мин. изменение веса для обновления")
+    parser.add_argument("--min-change", type=float, default=0.001, help="Мин. относительное изменение веса (доля, по умолчанию 0.05 = 5%)")
 
     args = parser.parse_args()
 

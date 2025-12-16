@@ -47,19 +47,24 @@ def calculate_target_weights(credit_stats, current_weights, smoothing=0.3):
     if not all_apps:
         return current_weights
     
-    all_apps_have_completed = True
-    any_app_has_completed = False
+    all_apps_have_nonzero_credit = True
+    any_app_has_nonzero_credit = False
     for app_name in all_apps:
         app_stats = credit_stats.get(app_name, {})
-        completed_count = app_stats.get('completed_count', 0)
-        if completed_count > 0:
-            any_app_has_completed = True
+        completed_credit = app_stats.get('completed_credit', 0)
+        if completed_credit > 0:
+            any_app_has_nonzero_credit = True
         else:
-            all_apps_have_completed = False
+            all_apps_have_nonzero_credit = False
     
-    if not any_app_has_completed:
+    if not any_app_has_nonzero_credit:
         logger = logging.getLogger()
-        logger.warning("  ⚠ Нет завершенных задач ни у одного приложения, веса не изменяются")
+        logger.warning("  ⚠ Нет завершенных задач с ненулевым кредитом ни у одного приложения, веса не изменяются")
+        return current_weights
+    
+    if not all_apps_have_nonzero_credit:
+        logger = logging.getLogger()
+        logger.warning("  ⚠ Не у всех приложений есть завершенные задачи с ненулевым кредитом, веса не изменяются")
         return current_weights
     
     app_total_credits = calculate_total_credits(credit_stats)
@@ -74,11 +79,6 @@ def calculate_target_weights(credit_stats, current_weights, smoothing=0.3):
         logger = logging.getLogger()
         logger.warning("  ⚠ Нет данных о кредитах, веса не изменяются")
         return current_weights
-    
-    use_limited_range = not all_apps_have_completed
-    if use_limited_range:
-        logger = logging.getLogger()
-        logger.info(f"  ⚠ Не все приложения имеют завершенные задачи - веса ограничены диапазоном [{INITIAL_WEIGHT_MIN}, {INITIAL_WEIGHT_MAX}]")
     
     target_share = 1.0 / len(all_apps)
     
@@ -99,9 +99,6 @@ def calculate_target_weights(credit_stats, current_weights, smoothing=0.3):
         
         smoothed_weight = smoothing * current_weight + (1 - smoothing) * new_weight
         smoothed_weight = max(MIN_WEIGHT, min(MAX_WEIGHT, smoothed_weight))
-        
-        if use_limited_range:
-            smoothed_weight = max(INITIAL_WEIGHT_MIN, min(INITIAL_WEIGHT_MAX, smoothed_weight))
         
         target_weights[app_name] = smoothed_weight
     

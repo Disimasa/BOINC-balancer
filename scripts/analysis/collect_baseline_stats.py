@@ -18,6 +18,78 @@ from lib.pipeline import run_full_pipeline
 SCRIPT_DIR = Path(__file__).parent.absolute()
 SERVER_DIR = SCRIPT_DIR.parent.parent
 
+
+def init_baseline_snapshot():
+    snapshots_dir = SERVER_DIR / "data" / "weights_snapshots"
+    snapshots_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = snapshots_dir / f"baseline_weights_{ts}.json"
+    header = {
+        "created_at": datetime.now().isoformat(),
+        "mode": "baseline_collect",
+        "states": [],
+    }
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(header, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def append_baseline_state(snapshot_path, credit_stats):
+    if not credit_stats or snapshot_path is None:
+        return
+    if any(int(s.get("completed_count", 0)) == 0 for s in credit_stats.values()):
+        return
+    total_completed_credit = sum(s.get("completed_credit", 0.0) for s in credit_stats.values())
+    total_completed_count = sum(s.get("completed_count", 0) for s in credit_stats.values())
+    global_avg_credit = (total_completed_credit / total_completed_count) if total_completed_count > 0 else 0.0
+
+    total_credits_by_app = {}
+    completed_credits_by_app = {}
+    total_credit_sum = 0.0
+    completed_credit_sum = 0.0
+
+    for app_name, s in credit_stats.items():
+        completed = float(s.get("completed_credit", 0.0))
+        count = int(s.get("completed_count", 0))
+        avg = float(s.get("avg_credit", 0.0))
+        in_progress = int(s.get("in_progress_count", 0))
+
+        if avg == 0 and count > 0 and completed > 0:
+            avg = completed / count
+        elif avg == 0:
+            avg = global_avg_credit
+
+        total_app = completed + avg * in_progress
+        total_credits_by_app[app_name] = total_app
+        completed_credits_by_app[app_name] = completed
+        total_credit_sum += total_app
+        completed_credit_sum += completed
+
+    state = {
+        "timestamp": datetime.now().isoformat(),
+        "total_credits_by_app": total_credits_by_app,
+        "total_credit_sum": total_credit_sum,
+        "completed_credits_by_app": completed_credits_by_app,
+        "completed_credit_sum": completed_credit_sum,
+    }
+
+    try:
+        path = Path(snapshot_path)
+        if path.exists():
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {
+                "created_at": datetime.now().isoformat(),
+                "mode": "baseline_collect",
+                "states": [],
+            }
+        data.setdefault("states", []).append(state)
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠ Не удалось записать состояние в {snapshot_path}: {e}", file=sys.stderr)
+
 def run_pipeline_setup(balance_hosts=False):
     print("\n" + "="*80)
     print("ШАГ 1: Запуск pipeline для чистого старта")
@@ -28,7 +100,7 @@ def run_pipeline_setup(balance_hosts=False):
 
 
 def step_wait():
-    wait_seconds = 1200
+    wait_seconds = 2400
     observe_window = 120
 
     print("\n" + "="*80)
@@ -185,8 +257,27 @@ def main():
     print(f"СБОР МЕТРИК")
     print("="*80)
 
+    snapshot_path = init_baseline_snapshot()
+
+    stop_event = threading.Event()
+
+    def baseline_logger():
+        counter = 0
+        while not stop_event.is_set():
+            time.sleep(1)
+            counter += 1
+            if counter % 30 == 0:
+                stats = get_credit_statistics()
+                if stats:
+                    append_baseline_state(snapshot_path, stats)
+
+    logger_thread = threading.Thread(target=baseline_logger, daemon=True)
+    logger_thread.start()
+
     if not run_pipeline_setup():
         print("✗ Ошибка при запуске pipeline", file=sys.stderr)
+        stop_event.set()
+        logger_thread.join(timeout=5)
         return 1
     
     window_metrics = step_wait()
@@ -200,8 +291,13 @@ def main():
         print(f"\n✓ Статистика сохранена в файл: {filename}")
     else:
         print("✗ Не удалось собрать статистику", file=sys.stderr)
+        stop_event.set()
+        logger_thread.join(timeout=5)
         return 1
-    
+
+    stop_event.set()
+    logger_thread.join(timeout=5)
+
     return 0
 
 

@@ -24,19 +24,19 @@ APP_CONFIGS = {
     },
     "medium_task": {
         "script": "tasks/medium_task.py",
-        "default_count": 5000,
+        "default_count": 8000,
         "target_nresults": 1,
         "version_num": "100"
     },
     "random_task": {
         "script": "tasks/random_task.py",
-        "default_count": 5000,
+        "default_count": 8000,
         "target_nresults": 1,
         "version_num": "100"
     },
     "long_task": {
         "script": "tasks/long_task.py",
-        "default_count": 1500,
+        "default_count": 2000,
         "target_nresults": 1,
         "version_num": "100"
     }

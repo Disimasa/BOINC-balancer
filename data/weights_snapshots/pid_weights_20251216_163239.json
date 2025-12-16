@@ -1,0 +1,499 @@
+{
+  "created_at": "2025-12-16T16:32:39.005535",
+  "kp": 1,
+  "ki": 0.1,
+  "kd": 0.3,
+  "max_step_change": 1,
+  "states": [
+    {
+      "timestamp": "2025-12-16T16:32:39.693469",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.35519900417354633,
+        "long_task": 0.20378468360433907,
+        "medium_task": 0.20463950774444958,
+        "random_task": 0.23637680447766501
+      },
+      "new_weights": {
+        "long_task": 0.20331306434819774,
+        "fast_task": 0.35660197093694235,
+        "random_task": 0.22916318383718218,
+        "medium_task": 0.2109217808776777
+      },
+      "total_credits_by_app": {
+        "fast_task": 2.6870551380978287,
+        "long_task": 27.336430677065536,
+        "medium_task": 16.92617054882191,
+        "random_task": 13.314927224796824
+      },
+      "total_credit_sum": 60.2645835887821,
+      "completed_credits_by_app": {
+        "fast_task": 1.2045419584576473,
+        "long_task": 4.567784046296298,
+        "medium_task": 9.451040376768352,
+        "random_task": 3.6868493373776037
+      },
+      "completed_credit_sum": 18.910215718899902
+    },
+    {
+      "timestamp": "2025-12-16T16:33:07.189156",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.35660197093694235,
+        "long_task": 0.20331306434819774,
+        "medium_task": 0.2109217808776777,
+        "random_task": 0.22916318383718218
+      },
+      "new_weights": {
+        "long_task": 0.2030820025903662,
+        "fast_task": 0.3552860987899436,
+        "random_task": 0.2347569453888711,
+        "medium_task": 0.20687495323081914
+      },
+      "total_credits_by_app": {
+        "fast_task": 2.931543153214408,
+        "long_task": 31.187969259523815,
+        "medium_task": 18.65344049406743,
+        "random_task": 14.880411870865116
+      },
+      "total_credit_sum": 67.65336477767076,
+      "completed_credits_by_app": {
+        "fast_task": 1.2163332556758026,
+        "long_task": 4.9170221805555565,
+        "medium_task": 9.791269531368727,
+        "random_task": 3.7787796706771037
+      },
+      "completed_credit_sum": 19.70340463827719
+    },
+    {
+      "timestamp": "2025-12-16T16:33:34.581907",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.3552860987899436,
+        "long_task": 0.2030820025903662,
+        "medium_task": 0.20687495323081914,
+        "random_task": 0.2347569453888711
+      },
+      "new_weights": {
+        "long_task": 0.2020472750266895,
+        "fast_task": 0.3560865403200845,
+        "random_task": 0.2354242912357267,
+        "medium_task": 0.20644189341749924
+      },
+      "total_credits_by_app": {
+        "fast_task": 3.150924408163803,
+        "long_task": 36.98159604256855,
+        "medium_task": 20.731853780606848,
+        "random_task": 17.04971907531128
+      },
+      "total_credit_sum": 77.91409330665047,
+      "completed_credits_by_app": {
+        "fast_task": 1.2418197585731423,
+        "long_task": 5.413655694444445,
+        "medium_task": 9.936991984497764,
+        "random_task": 3.9345505558410654
+      },
+      "completed_credit_sum": 20.527017993356417
+    },
+    {
+      "timestamp": "2025-12-16T16:34:01.181050",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.3560865403200845,
+        "long_task": 0.2020472750266895,
+        "medium_task": 0.20644189341749924,
+        "random_task": 0.2354242912357267
+      },
+      "new_weights": {
+        "long_task": 0.20157350229069695,
+        "fast_task": 0.35612511235595984,
+        "random_task": 0.23580150819388807,
+        "medium_task": 0.20649987715945523
+      },
+      "total_credits_by_app": {
+        "fast_task": 3.370177819632347,
+        "long_task": 40.821438178240754,
+        "medium_task": 22.308034469667064,
+        "random_task": 18.452285680224715
+      },
+      "total_credit_sum": 84.95193614776488,
+      "completed_credits_by_app": {
+        "fast_task": 1.264138509885013,
+        "long_task": 5.831634025462964,
+        "medium_task": 10.200682428437505,
+        "random_task": 4.126264888291456
+      },
+      "completed_credit_sum": 21.422719852076938
+    },
+    {
+      "timestamp": "2025-12-16T16:34:28.595405",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.35612511235595984,
+        "long_task": 0.20157350229069695,
+        "medium_task": 0.20649987715945523,
+        "random_task": 0.23580150819388807
+      },
+      "new_weights": {
+        "long_task": 0.20177276607986785,
+        "fast_task": 0.35638821401653814,
+        "random_task": 0.23640947162234402,
+        "medium_task": 0.20542954828125007
+      },
+      "total_credits_by_app": {
+        "fast_task": 3.466393371396702,
+        "long_task": 42.37362648495371,
+        "medium_task": 23.483383259368523,
+        "random_task": 19.550466734157716
+      },
+      "total_credit_sum": 88.87386984987666,
+      "completed_credits_by_app": {
+        "fast_task": 1.2998975142737632,
+        "long_task": 6.324421863425927,
+        "medium_task": 10.812835699546966,
+        "random_task": 4.823839953386483
+      },
+      "completed_credit_sum": 23.26099503063314
+    },
+    {
+      "timestamp": "2025-12-16T16:34:56.027446",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.35638821401653814,
+        "long_task": 0.20177276607986785,
+        "medium_task": 0.20542954828125007,
+        "random_task": 0.23640947162234402
+      },
+      "new_weights": {
+        "long_task": 0.20001322455383258,
+        "fast_task": 0.3560256946812628,
+        "random_task": 0.2443228984368259,
+        "medium_task": 0.19963818232807862
+      },
+      "total_credits_by_app": {
+        "fast_task": 4.218326603682532,
+        "long_task": 51.01198839894743,
+        "medium_task": 28.04598872402473,
+        "random_task": 22.754383850502098
+      },
+      "total_credit_sum": 106.0306875771568,
+      "completed_credits_by_app": {
+        "fast_task": 1.7889645707074042,
+        "long_task": 10.94617632769711,
+        "medium_task": 13.784912963675993,
+        "random_task": 6.573488667922828
+      },
+      "completed_credit_sum": 33.09354253000333
+    },
+    {
+      "timestamp": "2025-12-16T16:35:23.467081",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.3560256946812628,
+        "long_task": 0.20001322455383258,
+        "medium_task": 0.19963818232807862,
+        "random_task": 0.2443228984368259
+      },
+      "new_weights": {
+        "long_task": 0.19893453192192695,
+        "fast_task": 0.3561047581679208,
+        "random_task": 0.24451676653016882,
+        "medium_task": 0.20044394337998345
+      },
+      "total_credits_by_app": {
+        "fast_task": 4.6253943087230835,
+        "long_task": 57.65221718101747,
+        "medium_task": 30.295013124281613,
+        "random_task": 25.47869383404263
+      },
+      "total_credit_sum": 118.05131844806479,
+      "completed_credits_by_app": {
+        "fast_task": 1.8651617989873286,
+        "long_task": 12.13361748456937,
+        "medium_task": 14.231278749662533,
+        "random_task": 7.302663603428132
+      },
+      "completed_credit_sum": 35.532721636647366
+    },
+    {
+      "timestamp": "2025-12-16T16:35:50.934295",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.3561047581679208,
+        "long_task": 0.19893453192192695,
+        "medium_task": 0.20044394337998345,
+        "random_task": 0.24451676653016882
+      },
+      "new_weights": {
+        "long_task": 0.19797813379742712,
+        "fast_task": 0.35567222428462464,
+        "random_task": 0.24407209679586941,
+        "medium_task": 0.2022775451220788
+      },
+      "total_credits_by_app": {
+        "fast_task": 5.276101656502742,
+        "long_task": 67.47419079747793,
+        "medium_task": 33.64437511663934,
+        "random_task": 29.484704134840793
+      },
+      "total_credit_sum": 135.8793717054608,
+      "completed_credits_by_app": {
+        "fast_task": 1.8983620666044179,
+        "long_task": 12.554968973751093,
+        "medium_task": 14.30004911251785,
+        "random_task": 7.526540399760296
+      },
+      "completed_credit_sum": 36.279920552633655
+    },
+    {
+      "timestamp": "2025-12-16T16:36:18.294158",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.35567222428462464,
+        "long_task": 0.19797813379742712,
+        "medium_task": 0.2022775451220788,
+        "random_task": 0.24407209679586941
+      },
+      "new_weights": {
+        "long_task": 0.19671185119613827,
+        "fast_task": 0.3546704623745537,
+        "random_task": 0.24357226645093535,
+        "medium_task": 0.20504541997837275
+      },
+      "total_credits_by_app": {
+        "fast_task": 5.855752229830923,
+        "long_task": 76.43774917005764,
+        "medium_task": 36.6089601758841,
+        "random_task": 32.90061641131416
+      },
+      "total_credit_sum": 151.80307798708682,
+      "completed_credits_by_app": {
+        "fast_task": 1.912293314243108,
+        "long_task": 13.324011323221058,
+        "medium_task": 14.391436586361197,
+        "random_task": 7.6545232295419074
+      },
+      "completed_credit_sum": 37.28226445336727
+    },
+    {
+      "timestamp": "2025-12-16T16:36:45.729841",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.3546704623745537,
+        "long_task": 0.19671185119613827,
+        "medium_task": 0.20504541997837275,
+        "random_task": 0.24357226645093535
+      },
+      "new_weights": {
+        "long_task": 0.19573756909766807,
+        "fast_task": 0.3534928395061993,
+        "random_task": 0.24266740820490829,
+        "medium_task": 0.20810218319122437
+      },
+      "total_credits_by_app": {
+        "fast_task": 6.12810798471675,
+        "long_task": 80.92863243635348,
+        "medium_task": 38.03594428001214,
+        "random_task": 34.74341049818195
+      },
+      "total_credit_sum": 159.83609519926432,
+      "completed_credits_by_app": {
+        "fast_task": 1.9239108506590725,
+        "long_task": 13.604986735400846,
+        "medium_task": 14.438910680404858,
+        "random_task": 7.820727861144543
+      },
+      "completed_credit_sum": 37.78853612760932
+    },
+    {
+      "timestamp": "2025-12-16T16:37:13.238569",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.3534928395061993,
+        "long_task": 0.19573756909766807,
+        "medium_task": 0.20810218319122437,
+        "random_task": 0.24266740820490829
+      },
+      "new_weights": {
+        "long_task": 0.1946011581773541,
+        "fast_task": 0.35207671133050567,
+        "random_task": 0.24186819535754284,
+        "medium_task": 0.21145393513459748
+      },
+      "total_credits_by_app": {
+        "fast_task": 6.518162406343367,
+        "long_task": 86.93597670851952,
+        "medium_task": 40.25947517351416,
+        "random_task": 37.034524011115764
+      },
+      "total_credit_sum": 170.7481382994928,
+      "completed_credits_by_app": {
+        "fast_task": 1.9582905683742657,
+        "long_task": 14.021931727180567,
+        "medium_task": 14.553336565972042,
+        "random_task": 7.942566246772957
+      },
+      "completed_credit_sum": 38.47612510829983
+    },
+    {
+      "timestamp": "2025-12-16T16:37:40.754253",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.35207671133050567,
+        "long_task": 0.1946011581773541,
+        "medium_task": 0.21145393513459748,
+        "random_task": 0.24186819535754284
+      },
+      "new_weights": {
+        "long_task": 0.19370205252027586,
+        "fast_task": 0.35057219641741993,
+        "random_task": 0.24059061559172423,
+        "medium_task": 0.21513513547058002
+      },
+      "total_credits_by_app": {
+        "fast_task": 6.842873866669779,
+        "long_task": 92.05586480513954,
+        "medium_task": 42.21256474380406,
+        "random_task": 39.21358606189849
+      },
+      "total_credit_sum": 180.32488947751187,
+      "completed_credits_by_app": {
+        "fast_task": 1.967649013736744,
+        "long_task": 14.302662924789388,
+        "medium_task": 14.578198415747542,
+        "random_task": 8.008896035008108
+      },
+      "completed_credit_sum": 38.857406389281785
+    },
+    {
+      "timestamp": "2025-12-16T16:38:07.485746",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.35057219641741993,
+        "long_task": 0.19370205252027586,
+        "medium_task": 0.21513513547058002,
+        "random_task": 0.24059061559172423
+      },
+      "new_weights": {
+        "long_task": 0.19261377964552343,
+        "fast_task": 0.34837339999455397,
+        "random_task": 0.2386549983779728,
+        "medium_task": 0.22035782198194978
+      },
+      "total_credits_by_app": {
+        "fast_task": 7.078775446701462,
+        "long_task": 96.11838768949514,
+        "medium_task": 42.68005909690749,
+        "random_task": 40.64757492864755
+      },
+      "total_credit_sum": 186.52479716175165,
+      "completed_credits_by_app": {
+        "fast_task": 1.9892909102044256,
+        "long_task": 14.792837200936157,
+        "medium_task": 14.74185885241373,
+        "random_task": 8.083585522533298
+      },
+      "completed_credit_sum": 39.60757248608761
+    },
+    {
+      "timestamp": "2025-12-16T16:38:34.889248",
+      "kp": 1,
+      "ki": 0.1,
+      "kd": 0.3,
+      "max_step_change": 1,
+      "min_restart_change_threshold": 0.1,
+      "max_change_pct": 0,
+      "current_weights": {
+        "fast_task": 0.34837339999455397,
+        "long_task": 0.19261377964552343,
+        "medium_task": 0.22035782198194978,
+        "random_task": 0.2386549983779728
+      },
+      "new_weights": {
+        "long_task": 0.19117072163887844,
+        "fast_task": 0.34665000045806643,
+        "random_task": 0.23842969185885687,
+        "medium_task": 0.22374958604419828
+      },
+      "total_credits_by_app": {
+        "fast_task": 7.393281699477767,
+        "long_task": 100.05472859263675,
+        "medium_task": 45.15166044250112,
+        "random_task": 42.08782542007354
+      },
+      "total_credit_sum": 194.68749615468917,
+      "completed_credits_by_app": {
+        "fast_task": 2.0557056057804592,
+        "long_task": 14.934588080050196,
+        "medium_task": 15.866022712041424,
+        "random_task": 8.187576966965127
+      },
+      "completed_credit_sum": 41.0438933648372
+    }
+  ]
+}

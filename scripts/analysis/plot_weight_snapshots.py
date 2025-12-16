@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -25,18 +26,25 @@ def find_latest_snapshot() -> Path | None:
     return files[-1] if files else None
 
 
-def compute_credit_shares(states):
+def compute_credit_shares(states, use_completed=False):
     app_names = set()
     for st in states:
-        tc = st.get("total_credits_by_app") or {}
+        if use_completed:
+            tc = st.get("completed_credits_by_app") or {}
+        else:
+            tc = st.get("total_credits_by_app") or {}
         app_names.update(tc.keys())
     sorted_apps = sorted(app_names)
 
     shares_by_app = {name: [] for name in sorted_apps}
 
     for st in states:
-        tc = st.get("total_credits_by_app") or {}
-        total_sum = st.get("total_credit_sum")
+        if use_completed:
+            tc = st.get("completed_credits_by_app") or {}
+            total_sum = st.get("completed_credit_sum")
+        else:
+            tc = st.get("total_credits_by_app") or {}
+            total_sum = st.get("total_credit_sum")
         if not tc or not total_sum or total_sum == 0:
             continue
 
@@ -46,6 +54,63 @@ def compute_credit_shares(states):
             shares_by_app[name].append(share)
 
     return sorted_apps, shares_by_app
+
+
+def calculate_error_metrics(shares_by_app, max_iter=20, target_share=25.0):
+    """Вычисляет метрики ошибки для последних max_iter итераций."""
+    if not shares_by_app:
+        return None
+    
+    # Берем последние max_iter итераций для каждого приложения
+    last_shares = {}
+    for app_name, shares in shares_by_app.items():
+        last_shares[app_name] = shares[-max_iter:] if len(shares) >= max_iter else shares
+    
+    if not last_shares:
+        return None
+    
+    # Находим максимальную длину (на случай, если у разных приложений разное количество итераций)
+    max_len = max(len(shares) for shares in last_shares.values())
+    if max_len == 0:
+        return None
+    
+    # Вычисляем метрики для каждой итерации
+    errors_by_iteration = []
+    for i in range(max_len):
+        iteration_errors = []
+        for app_name in sorted(last_shares.keys()):
+            shares = last_shares[app_name]
+            if i < len(shares):
+                error = abs(shares[i] - target_share)
+                iteration_errors.append(error)
+        
+        if iteration_errors:
+            # RMSE для этой итерации
+            rmse = math.sqrt(sum(e**2 for e in iteration_errors) / len(iteration_errors))
+            # MAE для этой итерации
+            mae = sum(iteration_errors) / len(iteration_errors)
+            # Максимальная ошибка для этой итерации
+            max_err = max(iteration_errors)
+            errors_by_iteration.append({
+                'rmse': rmse,
+                'mae': mae,
+                'max_err': max_err
+            })
+    
+    if not errors_by_iteration:
+        return None
+    
+    # Средние метрики по всем итерациям
+    avg_rmse = sum(e['rmse'] for e in errors_by_iteration) / len(errors_by_iteration)
+    avg_mae = sum(e['mae'] for e in errors_by_iteration) / len(errors_by_iteration)
+    avg_max_err = sum(e['max_err'] for e in errors_by_iteration) / len(errors_by_iteration)
+    
+    return {
+        'avg_rmse': avg_rmse,
+        'avg_mae': avg_mae,
+        'avg_max_err': avg_max_err,
+        'by_iteration': errors_by_iteration
+    }
 
 
 def plot_shares(sorted_apps, shares_by_app, title_suffix=""):
@@ -102,7 +167,13 @@ def main():
         help="Путь к конкретному файлу pid_weights_*.json. "
              "Если не указан, берётся последний файл из server/data/weights_snapshots.",
     )
-    args = parser.read_args() if hasattr(parser, "read_args") else parser.parse_args()
+    parser.add_argument(
+        "--completed",
+        action="store_true",
+        help="Строить графики по completed_credits_by_app (по завершённым задачам), "
+             "а не по total_credits_by_app.",
+    )
+    args = parser.parse_args()
 
     if args.file:
         snapshot_path = Path(args.file)
@@ -121,8 +192,23 @@ def main():
         print("В файле снапшота нет поля 'states' или список пуст.")
         return 1
 
-    apps, shares_by_app = compute_credit_shares(states)
-    title_suffix = f"({snapshot_path.name})"
+    apps, shares_by_app = compute_credit_shares(states, use_completed=args.completed)
+    if args.completed:
+        title_suffix = f"(completed, {snapshot_path.name})"
+    else:
+        title_suffix = f"(total, {snapshot_path.name})"
+    
+    # Расчет метрик ошибки для последних 20 итераций
+    metrics = calculate_error_metrics(shares_by_app, max_iter=20, target_share=25.0)
+    if metrics:
+        print("\n" + "="*80)
+        print("МЕТРИКИ ОШИБКИ (последние 20 итераций)")
+        print("="*80)
+        print(f"Средний RMSE: {metrics['avg_rmse']:.2f}")
+        print(f"Средний MAE:   {metrics['avg_mae']:.2f}")
+        print(f"Средняя максимальная ошибка: {metrics['avg_max_err']:.2f}")
+        print("="*80 + "\n")
+    
     plot_shares(apps, shares_by_app, title_suffix=title_suffix)
 
     return 0

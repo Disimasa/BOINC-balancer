@@ -16,11 +16,6 @@ from lib.utils import run_command, PROJECT_HOME
 
 
 def get_queue_shares_from_shmem():
-    """
-    Получить долю занятых слотов shared memory (workarray) по приложениям.
-    Возвращает словарь {app_name: share}, где share в [0,1].
-    Если не удалось получить/распарсить данные, возвращает пустой словарь.
-    """
     cmd = f"cd {PROJECT_HOME} && bin/show_shmem"
     stdout, success = run_command(cmd, check=False, capture_output=True)
     if not success or not stdout:
@@ -32,27 +27,22 @@ def get_queue_shares_from_shmem():
     in_jobs_section = False
 
     for line in lines:
-        # Ищем начало секции Jobs
         if 'slot' in line.lower() and 'app' in line.lower() and 'wu id' in line.lower():
             in_jobs_section = True
             continue
         if not in_jobs_section:
             continue
-        # Пропускаем заголовки/разделители
         if 'slot' in line.lower() and 'app' in line.lower() and 'wu id' in line.lower():
             continue
         if line.strip().startswith('-'):
             continue
         if not line.strip():
             continue
-        # Пустой слот: "   1: ---"
         parts = line.split()
         if len(parts) < 2:
             continue
         if parts[0].endswith(':') and parts[1] == '---':
-            # пустой слот, не учитываем в занятых
             continue
-        # Ожидаемый формат занятого слота: "<slot> <app_name> <WU_ID> ..."
         match = re.match(r'\s*\d+\s+(\w+)\s+\d+', line)
         if match:
             app_name = match.group(1)
@@ -64,6 +54,45 @@ def get_queue_shares_from_shmem():
         return {}
 
     return {name: count / float(total_occupied) for name, count in app_counts.items()}
+
+
+def get_queue_counts_from_shmem():
+    cmd = f"cd {PROJECT_HOME} && bin/show_shmem"
+    stdout, success = run_command(cmd, check=False, capture_output=True)
+    if not success or not stdout:
+        return {}, 0
+
+    app_counts = defaultdict(int)
+    lines = stdout.split('\n')
+    in_jobs_section = False
+    total_slots = 0
+
+    for line in lines:
+        if 'slot' in line.lower() and 'app' in line.lower() and 'wu id' in line.lower():
+            in_jobs_section = True
+            continue
+        if not in_jobs_section:
+            continue
+        if 'slot' in line.lower() and 'app' in line.lower() and 'wu id' in line.lower():
+            continue
+        if line.strip().startswith('-'):
+            continue
+        if not line.strip():
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        if parts[0].endswith(':') and parts[1] == '---':
+            total_slots += 1
+            continue
+        match = re.match(r'\s*\d+\s+(\w+)\s+\d+', line)
+        if match:
+            app_name = match.group(1)
+            if app_name != '---':
+                app_counts[app_name] += 1
+                total_slots += 1
+
+    return dict(app_counts), total_slots
 
 def get_weights_from_shmem():
     """Получить веса приложений из shared memory через show_shmem."""
